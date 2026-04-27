@@ -45,3 +45,5 @@ Format conventions:
 - `feat(notify):` osascript notification driver with AppleScript escaping; `terminal-notifier` opt-in fallback; `stderr` backend for tests; every attempt logged.
 - `feat(check):` entrypoint wires sample → debounce → notify. Validated against all five integration scenarios (normal, critical-once, critical-cooldown, swap-only, both-together).
 - `feat(launchd):` plist template + `scripts/install.sh` (with `--dry-run`/`--force`) + `scripts/uninstall.sh` (with `--purge`). Rendered plist passes `plutil -lint` with the path-with-spaces repo location.
+- **End-to-end shipped:** real `launchctl bootstrap` succeeded on macOS 26.1; first launchd-driven tick fired one swap_in_use notification (existing 2782 MiB swap on the device), second tick suppressed under cooldown. Install / install-noop / `--force` / uninstall / uninstall-idempotent all verified.
+- `docs:` align README and REPO_STATUS with shipped v1.
