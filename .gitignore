@@ -15,6 +15,8 @@
 .env
 .env.local
 *.local
+*.local.*
+*.private.*
 
 # Logs and runtime state
 *.log
@@ -30,3 +32,24 @@ coverage/
 # Built or generated
 dist/
 build/
+
+# Internal docs and planning
+#
+# Markdown is private by default for this repo. Keep only the public-facing docs
+# explicitly listed below.
+*.md
+!README.md
+!CHANGELOG.md
+!LICENSE.md
+!CONTRIBUTING.md
+!SECURITY.md
+!CODE_OF_CONDUCT.md
+
+prompts/
+docs/private/
+notes/
+scratch/
+private/
+personal/
+.claude/
+.codex/

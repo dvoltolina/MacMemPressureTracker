@@ -23,6 +23,7 @@ Format conventions:
 - `docs:` add `CONSISTENCY.md` cross-cutting conventions (commit `45f809e`).
 - `docs:` add `REPO_STATUS.md` living status doc (commit `98457e7`).
 - `docs:` add `CHANGELOG.md` (this file).
+- `docs:` prepare public README and ignore internal prompts/docs for open-source publishing.
 
 ### Scaffolding
 
