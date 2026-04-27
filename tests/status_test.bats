@@ -1,0 +1,58 @@
+#!/usr/bin/env bats
+# Tests for scripts/status.sh.
+
+setup() {
+  REPO_ROOT="$(cd "${BATS_TEST_DIRNAME}/.." && pwd)"
+  TMP="$(mktemp -d)"
+  STUB="${TMP}/bin"
+  mkdir -p "${STUB}" "${TMP}/home"
+  export HOME="${TMP}/home"
+  export MPM_CONFIG_PATH="${TMP}/missing-config.sh"
+  export MPM_TEST_ALLOW_PATH=1
+  export PATH="${STUB}:${PATH}"
+}
+
+teardown() {
+  rm -rf "${TMP}"
+}
+
+stub_launchctl() {
+  local status="$1"
+  cat > "${STUB}/launchctl" <<STUB
+#!/bin/bash
+case "\$1" in
+  print) exit ${status} ;;
+  *) exit 0 ;;
+esac
+STUB
+  chmod +x "${STUB}/launchctl"
+}
+
+@test "status reports loaded launchd agent in human output" {
+  stub_launchctl 0
+  run "${REPO_ROOT}/scripts/status.sh"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Launchd loaded:  yes"* ]]
+  [[ "$output" == *"Plist installed:"* ]]
+}
+
+@test "status --json reports loaded false when launchctl print fails" {
+  stub_launchctl 1
+  run "${REPO_ROOT}/scripts/status.sh" --json
+  [ "$status" -eq 0 ]
+  [[ "$output" == *'"loaded":false'* ]]
+  [[ "$output" == *'"installed":false'* ]]
+}
+
+@test "status survives invalid config and reports the error" {
+  stub_launchctl 1
+  cat > "${TMP}/bad-config.sh" <<'CFG'
+MPM_INTERVAL_SECONDS=nope
+CFG
+  export MPM_CONFIG_PATH="${TMP}/bad-config.sh"
+
+  run "${REPO_ROOT}/scripts/status.sh" --json
+  [ "$status" -eq 0 ]
+  [[ "$output" == *'"config_status":"invalid"'* ]]
+  [[ "$output" == *"MPM_INTERVAL_SECONDS"* ]]
+}

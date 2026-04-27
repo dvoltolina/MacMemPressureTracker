@@ -51,6 +51,10 @@ Format conventions:
 - **End-to-end shipped:** real `launchctl bootstrap` succeeded on macOS 26.1; first launchd-driven tick fired one swap_in_use notification (existing 2782 MiB swap on the device), second tick suppressed under cooldown. Install / install-noop / `--force` / uninstall / uninstall-idempotent all verified.
 - `docs:` align README and REPO_STATUS with shipped v1.
 
+### Feature: app-dashboard
+
+- `feat(status):` add `scripts/status.sh` and `make status` for checking whether the launchd agent is installed, loaded, and writing logs.
+
 ### Fixes
 
 - `fix(config):` replace executable user-config sourcing with strict `KEY=value` parsing and startup validation for numeric, backend, and path settings.

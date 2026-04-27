@@ -43,6 +43,10 @@ test:  ## Run the bats-core test suite.
 .PHONY: check
 check: fmt-check lint test  ## Run formatter, linter, and tests (CI gate).
 
+.PHONY: status
+status:  ## Show launchd install/load status.
+	./scripts/status.sh
+
 .PHONY: install
 install:  ## Install the launchd user agent.
 	./scripts/install.sh
