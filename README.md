@@ -109,4 +109,4 @@ and swap usage, writes local logs, and sends local notifications.
 
 ## License
 
-No license file is included yet. Add a license before publishing or accepting contributions.
+MIT. See [LICENSE](LICENSE).

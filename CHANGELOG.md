@@ -24,6 +24,7 @@ Format conventions:
 - `docs:` add `REPO_STATUS.md` living status doc (commit `98457e7`).
 - `docs:` add `CHANGELOG.md` (this file).
 - `docs:` prepare public README and ignore internal prompts/docs for open-source publishing.
+- `docs:` merge the remote MIT license and update the public README license note.
 
 ### Scaffolding
 
