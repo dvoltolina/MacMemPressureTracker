@@ -35,4 +35,11 @@ Format conventions:
 
 ### Bootstrap closeout
 
-- `docs:` backfill final commit hashes into `prompts/bootstrap/INDEX.md` and `CHANGELOG.md` (this commit).
+- `docs:` backfill final commit hashes into `prompts/bootstrap/INDEX.md` and `CHANGELOG.md`.
+
+### Feature: memory-monitor-mvp
+
+- `feat(log):` JSONL logger with TEST_NOW honoring, escape-safe values, numeric pass-through, lazy parent-dir creation. Real-device fixtures captured (macOS 26.1 build 25B78). Discovered `memory_pressure(8)` is allocation-only — corrected primitives to `sysctl kern.memorystatus_vm_pressure_level / kern.memorystatus_level`, `vm_stat`, `sysctl vm.swapusage` (commit `4ff0e07`).
+- `feat(pressure):` parser for the four sysctl/`vm_stat` outputs with defensive parsing, stub-able `_pressure::_invoke_external`, and pure decision functions `pressure::is_red`, `pressure::swap_in_use`.
+- `feat(state):` cooldown-aware state file manager with atomic writes, schema-version field, structural-corruption warn, and override hooks (`MPM_STATE_PATH`, `TEST_NOW`).
+- `feat(notify):` osascript notification driver with AppleScript escaping; `terminal-notifier` opt-in fallback; `stderr` backend for tests; every attempt logged.
