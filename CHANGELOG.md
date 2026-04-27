@@ -43,3 +43,5 @@ Format conventions:
 - `feat(pressure):` parser for the four sysctl/`vm_stat` outputs with defensive parsing, stub-able `_pressure::_invoke_external`, and pure decision functions `pressure::is_red`, `pressure::swap_in_use`.
 - `feat(state):` cooldown-aware state file manager with atomic writes, schema-version field, structural-corruption warn, and override hooks (`MPM_STATE_PATH`, `TEST_NOW`).
 - `feat(notify):` osascript notification driver with AppleScript escaping; `terminal-notifier` opt-in fallback; `stderr` backend for tests; every attempt logged.
+- `feat(check):` entrypoint wires sample → debounce → notify. Validated against all five integration scenarios (normal, critical-once, critical-cooldown, swap-only, both-together).
+- `feat(launchd):` plist template + `scripts/install.sh` (with `--dry-run`/`--force`) + `scripts/uninstall.sh` (with `--purge`). Rendered plist passes `plutil -lint` with the path-with-spaces repo location.
