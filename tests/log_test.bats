@@ -81,3 +81,11 @@ teardown() {
   log::info second
   [ "$(wc -l < "${MPM_LOG_PATH}" | tr -d ' ')" = "2" ]
 }
+
+@test "pre-existing log file mode is preserved" {
+  touch "${MPM_LOG_PATH}"
+  chmod 0600 "${MPM_LOG_PATH}"
+  log::info preserve_mode
+  run stat -f "%Lp" "${MPM_LOG_PATH}"
+  [ "$output" = "600" ]
+}

@@ -60,3 +60,9 @@ Format conventions:
 - `fix(log):` create log files with mode `0644` and refuse symlinked log targets.
 - `test:` add config and install dry-run tests; expand pressure, state, notify, and entrypoint tests for audit regressions.
 - `docs:` align CLAUDE, AGENTS, ARCHITECTURE, CONSISTENCY, README, REPO_STATUS, and the memory-monitor prompt pack with the shipped sysctl-based implementation and audit fixes.
+- `fix(security):` reject sudo/root before user-facing scripts source config, preserve pre-existing log modes, reject unsafe custom log/state targets, and use `mktemp` for state/plist temp files.
+- `fix(state):` parse documented pretty JSON state files without losing alert timestamps and warn on truncated state structures.
+- `fix(pressure):` fail a tick on malformed swap output instead of logging a misleading `swap_used_mib:0` sample.
+- `fix(ux):` rename the standalone swap notification to "Swap in use" so first-observed active swap is not described as a definite transition.
+- `test:` cover invalid-config help paths, unsafe config targets, pretty state JSON, preserved log modes, and malformed swap output.
+- `docs:` update README notification recovery notes for the resumed audit findings.

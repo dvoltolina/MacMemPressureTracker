@@ -1,7 +1,8 @@
 # Memory Pressure Monitor
 
 A small macOS background utility that sends a notification when memory pressure becomes
-critical or swap usage transitions from inactive to active.
+critical or swap is first observed in use. After swap clears, a later return to swap usage
+can notify again.
 
 It runs as a user-level `launchd` agent. There is no GUI, server, telemetry, or third-party
 runtime dependency.
@@ -86,6 +87,10 @@ To trigger that prompt proactively:
 ```sh
 osascript -e 'display notification "Notifications are enabled." with title "Memory Pressure Monitor test"'
 ```
+
+The monitor records notification attempts even if macOS blocks delivery, so a denied prompt
+will still start the cooldown. After granting permission, wait for the cooldown to expire or
+remove `state/last_alert.json` to test immediately.
 
 ## Login Behavior
 

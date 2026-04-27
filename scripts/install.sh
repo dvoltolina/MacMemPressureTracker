@@ -13,15 +13,14 @@
 set -Eeuo pipefail
 IFS=$'\n\t'
 
-REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+if [ "${MPM_TEST_ALLOW_PATH:-0}" != "1" ]; then
+  PATH="/usr/bin:/bin:/usr/sbin:/sbin"
+  export PATH
+fi
+
 LABEL="com.dominic.memory-pressure-monitor"
-TEMPLATE="${REPO_ROOT}/launchd/${LABEL}.plist.tmpl"
 PLIST_DEST="${HOME}/Library/LaunchAgents/${LABEL}.plist"
 LOG_DIR="${HOME}/Library/Logs"
-
-# shellcheck source=/dev/null
-. "${REPO_ROOT}/lib/config.sh"
-config::load
 
 usage() {
   cat <<EOF
@@ -54,10 +53,17 @@ while [ $# -gt 0 ]; do
   shift
 done
 
-if [ "$(id -u)" -eq 0 ]; then
+if [ "${EUID}" -eq 0 ]; then
   printf 'do not run install.sh with sudo; install as the logged-in user.\n' >&2
   exit 1
 fi
+
+REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+TEMPLATE="${REPO_ROOT}/launchd/${LABEL}.plist.tmpl"
+
+# shellcheck source=/dev/null
+. "${REPO_ROOT}/lib/config.sh"
+config::load
 
 if [ ! -f "${TEMPLATE}" ]; then
   printf 'template not found: %s\n' "${TEMPLATE}" >&2
@@ -73,6 +79,10 @@ hostile() {
     *'&'*) return 0 ;;
     *) return 1 ;;
   esac
+}
+
+sed_replacement_escape() {
+  printf '%s' "$1" | sed 's/[\\&#]/\\&/g'
 }
 
 PROGRAM="${REPO_ROOT}/scripts/check_memory_pressure.sh"
@@ -98,13 +108,13 @@ esac
 # Render template.
 rendered="$(
   sed \
-    -e "s#__LABEL__#${LABEL}#g" \
-    -e "s#__PROGRAM__#${PROGRAM}#g" \
-    -e "s#__WORKING_DIR__#${WORKING_DIR}#g" \
-    -e "s#__INTERVAL__#${INTERVAL}#g" \
-    -e "s#__STDOUT__#${STDOUT}#g" \
-    -e "s#__STDERR__#${STDERR}#g" \
-    -e "s#__HOME__#${HOME}#g" \
+    -e "s#__LABEL__#$(sed_replacement_escape "${LABEL}")#g" \
+    -e "s#__PROGRAM__#$(sed_replacement_escape "${PROGRAM}")#g" \
+    -e "s#__WORKING_DIR__#$(sed_replacement_escape "${WORKING_DIR}")#g" \
+    -e "s#__INTERVAL__#$(sed_replacement_escape "${INTERVAL}")#g" \
+    -e "s#__STDOUT__#$(sed_replacement_escape "${STDOUT}")#g" \
+    -e "s#__STDERR__#$(sed_replacement_escape "${STDERR}")#g" \
+    -e "s#__HOME__#$(sed_replacement_escape "${HOME}")#g" \
     "${TEMPLATE}"
 )"
 
@@ -124,7 +134,7 @@ mkdir -p "${LOG_DIR}"
 mkdir -p "$(dirname "${PLIST_DEST}")"
 
 # Write plist atomically.
-tmp_plist="${PLIST_DEST}.tmp.$$"
+tmp_plist="$(mktemp "${PLIST_DEST}.tmp.XXXXXX")"
 printf '%s\n' "${rendered}" > "${tmp_plist}"
 
 # Validate plist syntax if plutil is available.
@@ -179,7 +189,8 @@ if launchctl print "${service}" > /dev/null 2>&1; then
   printf '  log:        %s\n' "${MPM_LOG_PATH:-${HOME}/Library/Logs/memory-pressure-monitor.log}"
   printf '\nFirst notification will require macOS notification permission. The first time the\n'
   printf 'agent fires a notification, macOS may show a system prompt — approve it to receive\n'
-  printf 'future alerts.\n'
+  printf 'future alerts. To trigger the prompt now, run:\n'
+  printf '  osascript -e '"'"'display notification "Notifications are enabled." with title "Memory Pressure Monitor test"'"'"'\n'
 else
   printf 'install completed but launchctl print failed; check Console.app for errors\n' >&2
   exit 1

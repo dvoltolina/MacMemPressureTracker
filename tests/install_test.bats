@@ -32,3 +32,25 @@ CFG
   [ "$status" -eq 0 ]
   [[ "$output" == *"<integer>45</integer>"* ]]
 }
+
+@test "install --help works when user config is invalid" {
+  cat > "${TMP}/bad-config.sh" <<'CFG'
+MPM_INTERVAL_SECONDS=not-a-number
+CFG
+  export MPM_CONFIG_PATH="${TMP}/bad-config.sh"
+
+  run "${REPO_ROOT}/scripts/install.sh" --help
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Usage:"* ]]
+}
+
+@test "uninstall --help works when user config is invalid" {
+  cat > "${TMP}/bad-config.sh" <<'CFG'
+MPM_INTERVAL_SECONDS=not-a-number
+CFG
+  export MPM_CONFIG_PATH="${TMP}/bad-config.sh"
+
+  run "${REPO_ROOT}/scripts/uninstall.sh" --help
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Usage:"* ]]
+}

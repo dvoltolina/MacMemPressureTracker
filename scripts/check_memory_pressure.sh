@@ -7,6 +7,16 @@
 set -Eeuo pipefail
 IFS=$'\n\t'
 
+if [ "${MPM_TEST_ALLOW_PATH:-0}" != "1" ]; then
+  PATH="/usr/bin:/bin:/usr/sbin:/sbin"
+  export PATH
+fi
+
+if [ "${EUID}" -eq 0 ]; then
+  printf 'do not run check_memory_pressure.sh with sudo; run as the logged-in user.\n' >&2
+  exit 1
+fi
+
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
 # shellcheck source=/dev/null
@@ -87,7 +97,7 @@ main() {
       log::info alert_coalesced kind=swap_in_use into=red_pressure
     elif state::should_alert swap_in_use; then
       send_alert swap_in_use \
-        "Swap started" \
+        "Swap in use" \
         "Swap is ${swap_used} MiB (threshold ${MPM_SWAP_THRESHOLD_MIB} MiB). Close high-memory apps."
     else
       state::set_swap_active true

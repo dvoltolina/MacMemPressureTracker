@@ -78,13 +78,23 @@ _log::emit() {
     return 0
   fi
 
+  local created=0
   if [ ! -e "${log_path}" ]; then
-    : > "${log_path}" 2> /dev/null || true
+    if (set -C; : > "${log_path}") 2> /dev/null; then
+      created=1
+    fi
+  fi
+
+  if [ ! -f "${log_path}" ] || [ ! -O "${log_path}" ]; then
+    printf 'log target is not a writable owner-owned regular file, refusing to write: %s\n' "${log_path}" >&2
+    return 0
+  fi
+
+  if [ "${created}" -eq 1 ]; then
     chmod 0644 "${log_path}" 2> /dev/null || true
   fi
 
   printf '%s\n' "${out}" >> "${log_path}" 2> /dev/null || true
-  chmod 0644 "${log_path}" 2> /dev/null || true
 
   if [ "${MPM_LOG_TEE_STDERR:-0}" = "1" ]; then
     printf '%s\n' "${out}" >&2

@@ -135,6 +135,38 @@ _config::require_absolute_path() {
   esac
 }
 
+_config::require_safe_file_path() {
+  local key="$1" val="$2" dir
+  _config::require_absolute_path "${key}" "${val}" || return 1
+
+  if [ -L "${val}" ]; then
+    _config::fail "${key} must not be a symlink: ${val}"
+    return 1
+  fi
+
+  if [ -e "${val}" ]; then
+    if [ ! -f "${val}" ]; then
+      _config::fail "${key} must be a regular file: ${val}"
+      return 1
+    fi
+    if [ ! -O "${val}" ]; then
+      _config::fail "${key} must be owned by the current user: ${val}"
+      return 1
+    fi
+    return 0
+  fi
+
+  dir="$(dirname "${val}")"
+  while [ ! -e "${dir}" ] && [ "${dir}" != "/" ]; do
+    dir="$(dirname "${dir}")"
+  done
+
+  if [ -L "${dir}" ] || [ ! -d "${dir}" ]; then
+    _config::fail "${key} parent directory is not a directory: ${dir}"
+    return 1
+  fi
+}
+
 config::validate() {
   _config::require_positive_uint MPM_INTERVAL_SECONDS "${MPM_INTERVAL_SECONDS:-}" || return 1
   _config::require_uint MPM_RED_COOLDOWN_SECONDS "${MPM_RED_COOLDOWN_SECONDS:-}" || return 1
@@ -157,9 +189,9 @@ config::validate() {
       ;;
   esac
 
-  _config::require_absolute_path MPM_LOG_PATH "${MPM_LOG_PATH:-}" || return 1
+  _config::require_safe_file_path MPM_LOG_PATH "${MPM_LOG_PATH:-}" || return 1
   if [ -n "${MPM_STATE_PATH:-}" ]; then
-    _config::require_absolute_path MPM_STATE_PATH "${MPM_STATE_PATH}" || return 1
+    _config::require_safe_file_path MPM_STATE_PATH "${MPM_STATE_PATH}" || return 1
   fi
 }
 

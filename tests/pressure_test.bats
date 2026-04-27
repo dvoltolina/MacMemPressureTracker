@@ -142,3 +142,19 @@ setup() {
   "
   [ "$status" -ne 0 ]
 }
+
+@test "sample: malformed swap output fails instead of reporting zero" {
+  run bash -c "
+    source '${REPO_ROOT}/lib/pressure.sh'
+    _pressure::_invoke_external() {
+      case \"\$1\" in
+        pressure_level) cat '${FIX}/sysctl_pressure_level_normal.txt' ;;
+        free_level) cat '${FIX}/sysctl_memorystatus_level.txt' ;;
+        vm_stat) cat '${FIX}/vm_stat_macos26.txt' ;;
+        swapusage) printf 'vm.swapusage: unexpected units used = 1.5G\n' ;;
+      esac
+    }
+    pressure::sample
+  "
+  [ "$status" -ne 0 ]
+}

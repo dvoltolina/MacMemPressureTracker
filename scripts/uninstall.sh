@@ -10,13 +10,13 @@
 set -Eeuo pipefail
 IFS=$'\n\t'
 
-REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+if [ "${MPM_TEST_ALLOW_PATH:-0}" != "1" ]; then
+  PATH="/usr/bin:/bin:/usr/sbin:/sbin"
+  export PATH
+fi
+
 LABEL="com.dominic.memory-pressure-monitor"
 PLIST_DEST="${HOME}/Library/LaunchAgents/${LABEL}.plist"
-
-# shellcheck source=/dev/null
-. "${REPO_ROOT}/lib/config.sh"
-config::load
 
 usage() {
   cat <<EOF
@@ -46,10 +46,12 @@ while [ $# -gt 0 ]; do
   shift
 done
 
-if [ "$(id -u)" -eq 0 ]; then
+if [ "${EUID}" -eq 0 ]; then
   printf 'do not run uninstall.sh with sudo; uninstall as the logged-in user.\n' >&2
   exit 1
 fi
+
+REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
 uid="$(id -u)"
 domain="gui/${uid}"
@@ -74,8 +76,15 @@ fi
 if [ "${purge}" -eq 1 ]; then
   default_state_path="${REPO_ROOT}/state/last_alert.json"
   default_log_path="${HOME}/Library/Logs/memory-pressure-monitor.log"
-  configured_state_path="${MPM_STATE_PATH:-${default_state_path}}"
-  configured_log_path="${MPM_LOG_PATH:-${default_log_path}}"
+  configured_state_path="${default_state_path}"
+  configured_log_path="${default_log_path}"
+  # shellcheck source=/dev/null
+  if . "${REPO_ROOT}/lib/config.sh" && config::load; then
+    configured_state_path="${MPM_STATE_PATH:-${default_state_path}}"
+    configured_log_path="${MPM_LOG_PATH:-${default_log_path}}"
+  else
+    printf 'warning: config is invalid; purging only default app-owned paths.\n' >&2
+  fi
   launchd_out="${HOME}/Library/Logs/memory-pressure-monitor.launchd.out.log"
   launchd_err="${HOME}/Library/Logs/memory-pressure-monitor.launchd.err.log"
   for f in "${default_state_path}" "${default_log_path}" "${launchd_out}" "${launchd_err}"; do

@@ -99,8 +99,9 @@ pressure::parse_compressed() {
 # pressure::sample
 # Emits one JSON line:
 #   {"zone":"normal|warn|red","free_pct":<int>,"compressed_pages":<int>,"swap_used_mib":<int>}
-# Returns non-zero if the primary pressure-level primitive fails or
-# reports an unknown enum. Secondary fields default to 0 on failure.
+# Returns non-zero if the primary pressure-level primitive fails, reports
+# an unknown enum, or swap output cannot be parsed. Non-swap secondary
+# fields default to 0 on failure.
 pressure::sample() {
   local raw_level zone free_pct compressed swap_used
 
@@ -113,7 +114,9 @@ pressure::sample() {
 
   free_pct="$(_pressure::_invoke_external free_level | pressure::parse_free_level)" || free_pct="0"
   compressed="$(_pressure::_invoke_external vm_stat | pressure::parse_compressed)" || compressed="0"
-  swap_used="$(_pressure::_invoke_external swapusage | pressure::parse_swap)" || swap_used="0"
+  if ! swap_used="$(_pressure::_invoke_external swapusage | pressure::parse_swap)"; then
+    return 1
+  fi
 
   printf '{"zone":"%s","free_pct":%s,"compressed_pages":%s,"swap_used_mib":%s}\n' \
     "${zone}" "${free_pct}" "${compressed}" "${swap_used}"

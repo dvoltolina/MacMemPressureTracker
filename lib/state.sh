@@ -73,10 +73,10 @@ _state::cooldown_for() {
 # _state::extract <kind>: reads the state file and prints the stored ISO ts
 # for <kind>, or empty if missing / null / corrupt.
 #
-# Matches the literal substring "<kind>":"..." or "<kind>":null. Because
-# kind values are a closed set ({red_pressure, swap_in_use}) and ISO 8601
-# timestamps cannot contain `"`, this is unambiguous without a real JSON
-# parser.
+# Matches "<kind>": "..." or "<kind>": null with optional JSON whitespace.
+# Because kind values are a closed set ({red_pressure, swap_in_use}) and
+# ISO 8601 timestamps cannot contain `"`, this is unambiguous without a
+# real JSON parser.
 _state::extract() {
   local kind="$1"
   local path
@@ -84,18 +84,29 @@ _state::extract() {
   [ -f "${path}" ] || return 0
   local raw
   raw="$(cat "${path}" 2> /dev/null)" || return 0
-  printf '%s' "${raw}" | awk -v k="${kind}" '
+  printf '%s' "${raw}" | tr '\n\r\t' '   ' | awk -v k="${kind}" '
     {
-      pat = "\"" k "\":";
-      idx = index($0, pat);
-      if (idx == 0) exit;
-      rest = substr($0, idx + length(pat));
-      if (substr(rest, 1, 4) == "null") exit;
-      if (substr(rest, 1, 1) != "\"") exit;
-      rest = substr(rest, 2);
-      end = index(rest, "\"");
-      if (end == 0) exit;
-      print substr(rest, 1, end - 1);
+      pat = "\"" k "\"[[:space:]]*:[[:space:]]*(null|\"[^\"]*\")";
+      if (!match($0, pat)) exit;
+      rest = substr($0, RSTART, RLENGTH);
+      sub(/^[^:]*:[[:space:]]*/, "", rest);
+      if (rest == "null") exit;
+      gsub(/^"|"$/, "", rest);
+      print rest;
+    }
+  '
+}
+
+_state::has_key() {
+  local key="$1" path raw
+  path="$(state::path)"
+  [ -f "${path}" ] || return 1
+  raw="$(cat "${path}" 2> /dev/null)" || return 1
+  printf '%s' "${raw}" | tr '\n\r\t' '   ' | awk -v k="${key}" '
+    {
+      pat = "\"" k "\"[[:space:]]*:";
+      if (match($0, pat)) exit 0;
+      exit 1;
     }
   '
 }
@@ -136,12 +147,23 @@ _state::current_swap_active_literal() {
 # one is being updated). Atomic via temp file + mv.
 _state::write_atomic() {
   local red="$1" swap="$2" swap_active="$3"
-  local path tmp dir
+  local path tmp dir target_existed
   path="$(state::path)"
   dir="$(dirname "${path}")"
   [ -d "${dir}" ] || mkdir -p "${dir}"
 
-  tmp="${path}.tmp.$$"
+  if [ -L "${path}" ] || { [ -e "${path}" ] && [ ! -f "${path}" ]; }; then
+    printf 'state target is not a regular file, refusing to write: %s\n' "${path}" >&2
+    return 1
+  fi
+  if [ -e "${path}" ] && [ ! -O "${path}" ]; then
+    printf 'state target is not owned by the current user, refusing to write: %s\n' "${path}" >&2
+    return 1
+  fi
+
+  target_existed=0
+  [ -e "${path}" ] && target_existed=1
+  tmp="$(mktemp "${dir}/.last_alert.XXXXXX")"
   local red_field swap_field
   if [ -z "${red}" ]; then
     red_field='null'
@@ -161,7 +183,9 @@ _state::write_atomic() {
   printf '{"schema":1,"last_alert":{"red_pressure":%s,"swap_in_use":%s},"swap_active":%s}\n' \
     "${red_field}" "${swap_field}" "${swap_active}" > "${tmp}"
   mv -f "${tmp}" "${path}"
-  chmod 0644 "${path}" 2> /dev/null || true
+  if [ "${target_existed}" -eq 0 ]; then
+    chmod 0644 "${path}" 2> /dev/null || true
+  fi
 }
 
 state::should_alert() {
@@ -171,7 +195,11 @@ state::should_alert() {
 
   local path
   path="$(state::path)"
-  if [ -f "${path}" ] && ! grep -q '"schema"' "${path}" 2> /dev/null; then
+  if [ -f "${path}" ] && {
+    ! grep -q '"schema"' "${path}" 2> /dev/null ||
+      ! _state::has_key red_pressure ||
+      ! _state::has_key swap_in_use
+  }; then
     if command -v log::warn > /dev/null 2>&1; then
       log::warn state_corrupted reason=missing_schema kind="${kind}"
     fi

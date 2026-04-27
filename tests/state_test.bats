@@ -110,3 +110,47 @@ teardown() {
   [[ "$output" == *'"swap_in_use":"2026-04-27T08:45:00-07:00"'* ]]
   [[ "$output" == *'"swap_active":true'* ]]
 }
+
+@test "should_alert parses pretty JSON with whitespace" {
+  cat > "${MPM_STATE_PATH}" <<'JSON'
+{
+  "schema": 1,
+  "last_alert": {
+    "red_pressure": "2026-04-27T08:45:00-07:00",
+    "swap_in_use": null
+  },
+  "swap_active": false
+}
+JSON
+
+  now=$(($(date -j -f "%Y-%m-%dT%H:%M:%S%z" "2026-04-27T08:45:00-0700" +%s) + 300))
+  run env TEST_NOW="${now}" bash -c "source '${REPO_ROOT}/lib/log.sh'; source '${REPO_ROOT}/lib/state.sh'; state::should_alert red_pressure"
+  [ "$status" -eq 1 ]
+}
+
+@test "set_swap_active preserves timestamps from pretty JSON" {
+  cat > "${MPM_STATE_PATH}" <<'JSON'
+{
+  "schema": 1,
+  "last_alert": {
+    "red_pressure": "2026-04-27T08:00:00-07:00",
+    "swap_in_use": "2026-04-27T09:00:00-07:00"
+  },
+  "swap_active": true
+}
+JSON
+
+  state::set_swap_active false
+  run cat "${MPM_STATE_PATH}"
+  [[ "$output" == *'"red_pressure":"2026-04-27T08:00:00-07:00"'* ]]
+  [[ "$output" == *'"swap_in_use":"2026-04-27T09:00:00-07:00"'* ]]
+  [[ "$output" == *'"swap_active":false'* ]]
+}
+
+@test "state with schema but missing alert keys logs corruption warning" {
+  printf '{"schema":1,' > "${MPM_STATE_PATH}"
+  run state::should_alert red_pressure
+  [ "$status" -eq 0 ]
+  run cat "${MPM_LOG_PATH}"
+  [[ "$output" == *'"event":"state_corrupted"'* ]]
+}

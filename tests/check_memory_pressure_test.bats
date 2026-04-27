@@ -14,6 +14,7 @@ setup() {
   export MPM_SWAP_COOLDOWN_SECONDS=900
   export MPM_SWAP_THRESHOLD_MIB=64
   export MPM_CONFIG_PATH="${TMP}/missing-config.sh"
+  export MPM_TEST_ALLOW_PATH=1
 }
 
 teardown() {
@@ -76,7 +77,7 @@ STUB
   stub_path sysctl_pressure_level_normal.txt sysctl_swapusage_active.txt
   run "${REPO_ROOT}/scripts/check_memory_pressure.sh"
   [ "$status" -eq 0 ]
-  [[ "$output" == *"notify: title=Swap started"* ]]
+  [[ "$output" == *"notify: title=Swap in use"* ]]
   run cat "${MPM_LOG_PATH}"
   [[ "$output" == *'"kind":"swap_in_use"'* ]]
 }
@@ -89,7 +90,7 @@ STUB
   run env TEST_NOW=1000001000 TEST_NOW_ISO="2001-09-09T02:03:20+00:00" \
     "${REPO_ROOT}/scripts/check_memory_pressure.sh"
   [ "$status" -eq 0 ]
-  [[ "$output" != *"notify: title=Swap started"* ]]
+  [[ "$output" != *"notify: title=Swap in use"* ]]
   run cat "${MPM_LOG_PATH}"
   [[ "$output" == *'"reason":"still_active"'* ]]
 }
@@ -107,7 +108,7 @@ STUB
   run env TEST_NOW=1000001000 TEST_NOW_ISO="2001-09-09T02:03:20+00:00" \
     "${REPO_ROOT}/scripts/check_memory_pressure.sh"
   [ "$status" -eq 0 ]
-  [[ "$output" == *"notify: title=Swap started"* ]]
+  [[ "$output" == *"notify: title=Swap in use"* ]]
 }
 
 @test "red and swap simultaneously: one red notification covers both" {
@@ -115,7 +116,7 @@ STUB
   run "${REPO_ROOT}/scripts/check_memory_pressure.sh"
   [ "$status" -eq 0 ]
   [[ "$output" == *"notify: title=Memory pressure critical"* ]]
-  [[ "$output" != *"notify: title=Swap started"* ]]
+  [[ "$output" != *"notify: title=Swap in use"* ]]
   run cat "${MPM_LOG_PATH}"
   [[ "$output" == *'"event":"alert_coalesced"'* ]]
 }
