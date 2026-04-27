@@ -1,0 +1,32 @@
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# Editor / IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Local environment
+.env
+.env.local
+*.local
+
+# Logs and runtime state
+*.log
+logs/
+state/
+tmp/
+
+# Test artifacts
+.coverage
+coverage/
+*.tap
+
+# Built or generated
+dist/
+build/
