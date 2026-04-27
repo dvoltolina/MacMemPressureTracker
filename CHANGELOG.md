@@ -34,6 +34,7 @@ Format conventions:
 
 - `docs:` prompt pack scaffolding and template — `prompts/README.md`, `_template/`, and the historical `bootstrap/INDEX.md` (commit `ce25fa3`).
 - `docs:` first prompt pack for `memory-monitor-mvp` — eight task prompts plus `BREAKDOWN.md` and `INDEX.md` (commit `94c0e7e`).
+- `docs:` add `app-dashboard` prompt pack for the native dashboard, status helper, app icon, docs, and verification workstream.
 
 ### Bootstrap closeout
 
