@@ -1,0 +1,7 @@
+# Placeholder — captured macOS command output goes here:
+#   memory_pressure_normal.txt
+#   memory_pressure_warn.txt
+#   memory_pressure_red.txt
+#   vm_stat_macos14.txt
+#   sysctl_swapusage_active.txt
+#   sysctl_swapusage_inactive.txt

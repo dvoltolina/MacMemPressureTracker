@@ -1,0 +1,9 @@
+# shfmt configuration (read by `shfmt --apply-ignore` in newer versions; for
+# older versions pass these flags explicitly via the Makefile target).
+#
+#   shfmt -i 2 -ci -bn -sr
+#
+# -i 2  : indent with 2 spaces
+# -ci   : indent switch cases
+# -bn   : binary ops may start a line
+# -sr   : redirect operators followed by a space

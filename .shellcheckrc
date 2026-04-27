@@ -1,0 +1,11 @@
+# shellcheck configuration
+# Run via: shellcheck scripts/*.sh lib/*.sh
+
+# Treat library files as bash; CONSISTENCY.md mandates bash 3.2 compatibility.
+shell=bash
+
+# Follow source statements to lint sourced files.
+external-sources=true
+
+# Disable rules that conflict with macOS bash 3.2:
+# (none currently — re-evaluate per-file with `# shellcheck disable=...` if needed)
