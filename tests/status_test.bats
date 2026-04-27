@@ -33,6 +33,7 @@ STUB
   run "${REPO_ROOT}/scripts/status.sh"
   [ "$status" -eq 0 ]
   [[ "$output" == *"Launchd loaded:  yes"* ]]
+  [[ "$output" == *"Status:"* ]]
   [[ "$output" == *"Plist installed:"* ]]
 }
 
@@ -41,6 +42,7 @@ STUB
   run "${REPO_ROOT}/scripts/status.sh" --json
   [ "$status" -eq 0 ]
   [[ "$output" == *'"loaded":false'* ]]
+  [[ "$output" == *'"health":"not_installed"'* ]]
   [[ "$output" == *'"installed":false'* ]]
 }
 
@@ -54,5 +56,47 @@ CFG
   run "${REPO_ROOT}/scripts/status.sh" --json
   [ "$status" -eq 0 ]
   [[ "$output" == *'"config_status":"invalid"'* ]]
+  [[ "$output" == *'"health":"config_invalid"'* ]]
   [[ "$output" == *"MPM_INTERVAL_SECONDS"* ]]
+}
+
+@test "status honors valid custom log and state config paths" {
+  stub_launchctl 1
+  cat > "${TMP}/config.sh" <<CFG
+MPM_LOG_PATH=${TMP}/custom.log
+MPM_STATE_PATH=${TMP}/custom-state.json
+CFG
+  export MPM_CONFIG_PATH="${TMP}/config.sh"
+  touch "${TMP}/custom.log" "${TMP}/custom-state.json"
+
+  run "${REPO_ROOT}/scripts/status.sh" --json
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"\"log_path\":\"${TMP}/custom.log\""* ]]
+  [[ "$output" == *"\"state_path\":\"${TMP}/custom-state.json\""* ]]
+}
+
+@test "loaded agent with stale sample is not reported as running" {
+  stub_launchctl 0
+  cat > "${TMP}/config.sh" <<CFG
+MPM_LOG_PATH=${TMP}/monitor.log
+CFG
+  export MPM_CONFIG_PATH="${TMP}/config.sh"
+  printf '{"ts":"2001-09-09T01:46:40+00:00","level":"info","event":"sample_taken","zone":"normal"}\n' > "${TMP}/monitor.log"
+
+  run env TEST_NOW=1000001000 "${REPO_ROOT}/scripts/status.sh" --json
+  [ "$status" -eq 0 ]
+  [[ "$output" == *'"health":"loaded_stale_sample"'* ]]
+  [[ "$output" == *'"sample_fresh":false'* ]]
+}
+
+@test "status does not tail symlinked default log path" {
+  stub_launchctl 1
+  mkdir -p "${HOME}/Library/Logs"
+  printf 'secret target content\n' > "${TMP}/target-log"
+  ln -s "${TMP}/target-log" "${HOME}/Library/Logs/memory-pressure-monitor.log"
+
+  run "${REPO_ROOT}/scripts/status.sh" --json
+  [ "$status" -eq 0 ]
+  [[ "$output" == *'"log_access":"unsafe"'* ]]
+  [[ "$output" != *"secret target content"* ]]
 }

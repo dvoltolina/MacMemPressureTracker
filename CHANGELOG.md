@@ -54,6 +54,9 @@ Format conventions:
 ### Feature: app-dashboard
 
 - `feat(status):` add `scripts/status.sh` and `make status` for checking whether the launchd agent is installed, loaded, and writing logs.
+- `feat(app):` add a native AppKit dashboard wrapper, deterministic generated app icon, and `make app` build target.
+- `test(app):` add a build smoke test for the native dashboard app bundle.
+- `fix(app):` add derived health status, launchd log visibility, app-level root/script validation, safer app build output handling, and clearer dashboard documentation.
 
 ### Fixes
 

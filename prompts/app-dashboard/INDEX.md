@@ -5,7 +5,7 @@
 | Prompt filename | Summary | Complexity | Dependencies | Target files | Verification commands | Parallel safe |
 | --- | --- | --- | --- | --- | --- | --- |
 | `01-status-helper.md` | Add a CLI status helper for launchd/log/state visibility | Small | None | `scripts/status.sh`, `tests/status_test.bats`, `Makefile`, `CHANGELOG.md` | `bash -n scripts/status.sh`; `scripts/status.sh`; `scripts/status.sh --json` | Yes |
-| `02-native-dashboard-app.md` | Add native AppKit dashboard app, app icon generator, and build script | Medium | `01-status-helper.md` | `app/MemoryPressureMonitor/*`, `scripts/build-app.sh`, `Makefile`, `README.md`, `CHANGELOG.md` | `bash -n scripts/build-app.sh`; `./scripts/build-app.sh`; `plutil -lint build/Memory Pressure Monitor.app/Contents/Info.plist` | No |
+| `02-native-dashboard-app.md` | Add native AppKit dashboard app, app icon generator, and build script | Medium | `01-status-helper.md` | `app/MemoryPressureMonitor/*`, `scripts/build-app.sh`, `tests/app_build_test.bats`, `Makefile`, `README.md`, `CHANGELOG.md` | `bash -n scripts/build-app.sh`; `./scripts/build-app.sh`; `plutil -lint build/Memory Pressure Monitor.app/Contents/Info.plist` | No |
 | `03-docs-and-verification.md` | Update user docs and final verification notes | Small | `01-status-helper.md`, `02-native-dashboard-app.md` | `README.md`, `CHANGELOG.md`, `REPO_STATUS.md` | `git diff --check`; strongest available local verification | No |
 
 ## Recommended Execution Order

@@ -4,8 +4,9 @@ A small macOS background utility that sends a notification when memory pressure 
 critical or swap is first observed in use. After swap clears, a later return to swap usage
 can notify again.
 
-It runs as a user-level `launchd` agent. There is no GUI, server, telemetry, or third-party
-runtime dependency.
+It runs as a user-level `launchd` agent. The background monitor has no always-running GUI,
+server, telemetry, or third-party runtime dependency. An optional dashboard app can be built
+from this repo for status and basic controls.
 
 ## Requirements
 
@@ -13,6 +14,13 @@ runtime dependency.
 - Bash 3.2 or newer, which is included with macOS
 - Notification permission for the process that posts alerts, usually Script Editor via
   `osascript`
+
+The optional dashboard build also requires Xcode Command Line Tools for `/usr/bin/swiftc`,
+`/usr/bin/iconutil`, and `plutil`:
+
+```sh
+xcode-select --install
+```
 
 ## Install
 
@@ -35,6 +43,51 @@ To reload after changing configuration:
 ```sh
 ./scripts/install.sh --force
 ```
+
+## Check Status
+
+To see whether the background monitor is installed and currently loaded by `launchd`:
+
+```sh
+./scripts/status.sh
+```
+
+For machine-readable output:
+
+```sh
+./scripts/status.sh --json
+```
+
+`Status: Running` means the agent is loaded and has written at least one sample log.
+`Launchd loaded: yes` without a recent sample means launchd has the job loaded, but the
+dashboard cannot yet prove that sampling is healthy. `Plist installed: yes` but
+`Launchd loaded: no` means the launchd file exists but the job is not currently loaded.
+
+## Dashboard App
+
+Build the small native dashboard app:
+
+```sh
+make app
+```
+
+Then open:
+
+```sh
+open "build/Memory Pressure Monitor.app"
+```
+
+The dashboard shows the same running status as `scripts/status.sh` and provides buttons to
+refresh status, install/reload the launchd job, uninstall it, send a test notification, and
+reveal the log file in Finder.
+
+The app bundle stores the current repository path at build time. If you move the repository,
+run `make app` again and reinstall the launchd job from the new path.
+
+Do not run the dashboard with `sudo`; it is a per-user app for a per-user launchd agent.
+The Test Notification button can confirm that the notification command ran, but macOS does
+not provide a reliable delivery confirmation. If no banner appears, check notification
+settings for Script Editor or `osascript`.
 
 ## Uninstall
 

@@ -47,6 +47,10 @@ check: fmt-check lint test  ## Run formatter, linter, and tests (CI gate).
 status:  ## Show launchd install/load status.
 	./scripts/status.sh
 
+.PHONY: app
+app:  ## Build the native dashboard app.
+	./scripts/build-app.sh
+
 .PHONY: install
 install:  ## Install the launchd user agent.
 	./scripts/install.sh
