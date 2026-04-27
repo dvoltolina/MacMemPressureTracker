@@ -1,6 +1,6 @@
 # BREAKDOWN — memory-monitor-mvp
 
-> Risk and architecture breakdown produced before any task prompt is executed. Authored during repo bootstrap. Confirm or update before kicking off the first real implementation.
+> Risk and architecture breakdown produced before any task prompt is executed. Authored during repo bootstrap. Updated 2026-04-27 after discovering that the `memory_pressure(8)` CLI is an allocation tool, not a sampler — the canonical sampling primitive is `sysctl kern.memorystatus_vm_pressure_level`.
 
 ---
 
@@ -9,8 +9,12 @@
 Ship the minimum viable end-to-end loop:
 
 1. `launchd` invokes `scripts/check_memory_pressure.sh` every `MPM_INTERVAL_SECONDS`.
-2. The script samples `memory_pressure`, `vm_stat`, and `sysctl vm.swapusage`.
-3. If pressure is "red" or swap is in active use, the script fires a macOS notification.
+2. The script samples four sysctls / commands:
+   - `sysctl kern.memorystatus_vm_pressure_level` → zone enum (`1`=normal, `2`=warn, `4`=critical)
+   - `sysctl kern.memorystatus_level` → free %
+   - `vm_stat` → page counts (compressed pages especially)
+   - `sysctl vm.swapusage` → swap MiB used
+3. If pressure zone is **critical** ("red") or swap usage exceeds the threshold, fire a macOS notification.
 4. A debounce window prevents repeat notifications within a cooldown.
 5. Every sample is logged as JSONL.
 
@@ -28,13 +32,13 @@ When the workstream is done, the user can install the agent with one command and
 - Installation (new): `scripts/install.sh`, `scripts/uninstall.sh`
 - launchd template (new): `launchd/com.dominic.memory-pressure-monitor.plist.tmpl`
 - Tests (new): `tests/{pressure,state,log,notify,check_memory_pressure}_test.bats`
-- Fixtures (new): `tests/fixtures/{memory_pressure,vm_stat,sysctl_swapusage}_*.txt`
+- Fixtures (new): `tests/fixtures/{sysctl_pressure_level,sysctl_memorystatus_level,vm_stat,sysctl_swapusage}_*.txt`
 
 ## 2. Files likely to change
 
 | Path | Why |
 | --- | --- |
-| `lib/pressure.sh` | Parser for `memory_pressure`/`vm_stat`/`sysctl vm.swapusage` |
+| `lib/pressure.sh` | Parser for the four sysctl/`vm_stat` outputs |
 | `lib/state.sh` | Read/write `state/last_alert.json` with debounce logic |
 | `lib/log.sh` | Append-only JSONL logger |
 | `lib/notify.sh` | `osascript` notification driver with stderr fallback |
@@ -81,7 +85,7 @@ None at v1. State migration code is a stub that only handles `schema=1`.
 ## 9. User-facing edge cases
 
 - **First run, no notification permission yet.** Notification silently fails until the user grants it. Log a warning.
-- **`memory_pressure` returns unexpected output.** Log warning, skip this tick. Do not crash the launchd-managed process.
+- **A sysctl returns unexpected output.** Log warning, skip this tick. Do not crash the launchd-managed process.
 - **Clock skew or system sleep.** Cooldown is computed from a wall-clock timestamp; if the wall clock jumps, debounce may fire one extra notification. Acceptable for v1.
 - **Disk full.** Logging fails; the launchd `StandardErrorPath` captures the error. Sampling proceeds.
 - **State file corrupted (manual edit, partial write).** Treat as "no prior alerts"; overwrite on next alert. Log warning.
@@ -97,10 +101,10 @@ None at v1. State migration code is a stub that only handles `schema=1`.
   - `lib/log.sh` — assert JSONL output is one valid object per call.
   - `lib/notify.sh` — assert that with backend `stderr` (test-only), the right message lands on stderr.
 - **Integration-level (still no real device):**
-  - `tests/check_memory_pressure_test.bats` invokes the entrypoint with a stubbed `PATH` providing fake `memory_pressure`/`vm_stat`/`sysctl` binaries that print fixture content. Asserts no notification fires under nominal load and one fires under red load.
+  - `tests/check_memory_pressure_test.bats` invokes the entrypoint with a stubbed `PATH` providing fake `sysctl`/`vm_stat` binaries that print fixture content. Asserts no notification fires under nominal load and one fires under red load.
 - **Manual QA on the user's actual MacBook:**
   - Install. Confirm `launchctl print gui/$UID/com.dominic.memory-pressure-monitor` shows the agent loaded.
-  - Trigger memory pressure (e.g. `stress-ng --vm 2 --vm-bytes 80%` or load a few large apps). Confirm a notification appears.
+  - Trigger memory pressure (or write to the state file directly to simulate a "should-alert" condition). Confirm a notification appears.
   - Wait inside the cooldown window and confirm a second notification does NOT appear.
   - Uninstall. Confirm `launchctl print` no longer lists the label, plist is gone, and (with `--purge`) state file is gone.
 
@@ -129,9 +133,9 @@ None at v1. State migration code is a stub that only handles `schema=1`.
 
 ---
 
-## Open questions to resolve before tasks 01–06 are executed
+## Resolved open questions (originally listed before bootstrap)
 
-1. Confirm the user's macOS major version so fixtures match (`sw_vers -productVersion`).
-2. Confirm the launchd label `com.dominic.memory-pressure-monitor` is acceptable.
-3. Confirm cooldown defaults (10 min red, 15 min swap) are reasonable for the user's workload.
-4. Confirm whether a "recovered" notification is in or out of v1.
+1. ✅ macOS version: `26.1` (build `25B78`). Fixtures named with `_macos26` suffix.
+2. ✅ Launchd label: `com.dominic.memory-pressure-monitor` — confirmed.
+3. ✅ Cooldown defaults: `RED=600s`, `SWAP=900s` — accepted for v1; tuneable via `~/.config/memory-pressure-monitor/config.sh`.
+4. ✅ "Recovered" notifications: out of v1.

@@ -14,7 +14,7 @@ A personal macOS-only notification system that alerts the user when memory press
 
 - **Language:** `bash` 3.2+ (the system shell on macOS — do not require bash 4+).
 - **Scheduling:** `launchd` user agent (`~/Library/LaunchAgents/`).
-- **Memory sampling:** `memory_pressure`, `vm_stat`, `sysctl vm.swapusage`.
+- **Memory sampling:** `sysctl kern.memorystatus_vm_pressure_level` (zone enum: `1`=normal, `2`=warn, `4`=critical), `sysctl kern.memorystatus_level` (free %), `vm_stat` (compressed pages), `sysctl vm.swapusage` (swap MiB). The `memory_pressure(8)` CLI is intentionally NOT used — it is an allocation/load-generation tool, not a sampler.
 - **Notifications:** `osascript -e 'display notification ...'` by default. `terminal-notifier` is an optional, opt-in alternative.
 - **Tests:** [`bats-core`](https://github.com/bats-core/bats-core).
 - **Lint/format:** `shellcheck`, `shfmt`.
