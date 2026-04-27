@@ -26,8 +26,13 @@ Format conventions:
 
 ### Scaffolding
 
-_Forthcoming in this same bootstrap series — see Step 3 of the Bootstrap procedure._
+- `chore:` scaffold project structure — directories, lint/format/test configs, Makefile, CI workflow, smoke test (commit `49b4656`).
 
 ### Prompt packs
 
-_Forthcoming in this same bootstrap series — see Steps 4–6 of the Bootstrap procedure._
+- `docs:` prompt pack scaffolding and template — `prompts/README.md`, `_template/`, and the historical `bootstrap/INDEX.md` (commit `ce25fa3`).
+- `docs:` first prompt pack for `memory-monitor-mvp` — eight task prompts plus `BREAKDOWN.md` and `INDEX.md` (commit `94c0e7e`).
+
+### Bootstrap closeout
+
+- `docs:` backfill final commit hashes into `prompts/bootstrap/INDEX.md` and `CHANGELOG.md` (this commit).

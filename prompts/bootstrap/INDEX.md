@@ -30,10 +30,8 @@ The repo at the end of bootstrap contains:
 | `98457e7` | `docs: add REPO_STATUS.md living status doc` |
 | `6d85f5e` | `docs: add CHANGELOG.md` |
 | `49b4656` | `chore: scaffold project structure` |
-| _(later in series)_ | `docs: prompt pack scaffolding and template` |
-| _(later in series)_ | `docs: first prompt pack for memory-monitor-mvp` |
-
-> The final two hashes are filled in by the bootstrap agent's final report once those commits land.
+| `ce25fa3` | `docs: prompt pack scaffolding and template` |
+| `94c0e7e` | `docs: first prompt pack for memory-monitor-mvp` |
 
 ## Decisions worth preserving
 
