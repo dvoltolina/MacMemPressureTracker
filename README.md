@@ -1,7 +1,7 @@
 # Memory Pressure Monitor
 
 A small macOS background utility that sends a notification when memory pressure becomes
-critical or the system starts using swap.
+critical or swap usage transitions from inactive to active.
 
 It runs as a user-level `launchd` agent. There is no GUI, server, telemetry, or third-party
 runtime dependency.
@@ -20,6 +20,8 @@ Clone the repository, then run:
 ```sh
 ./scripts/install.sh
 ```
+
+Do not use `sudo`; the monitor is a per-user launchd agent.
 
 To preview the generated launchd plist without installing it:
 
@@ -45,6 +47,9 @@ To also remove local state and logs:
 ./scripts/uninstall.sh --purge
 ```
 
+`--purge` removes only the default app-owned state and log files. If you configured custom
+state or log paths, remove those manually after checking the path.
+
 ## Configuration
 
 Defaults live in `config/defaults.sh`. To override them, create:
@@ -62,10 +67,31 @@ MPM_SWAP_COOLDOWN_SECONDS=900
 MPM_SWAP_THRESHOLD_MIB=64
 MPM_NOTIFICATION_BACKEND=osascript
 MPM_NOTIFICATION_SOUND=
-MPM_LOG_PATH="$HOME/Library/Logs/memory-pressure-monitor.log"
+MPM_LOG_PATH=/Users/dominic/Library/Logs/memory-pressure-monitor.log
 ```
 
-Run `./scripts/install.sh --force` after changing configuration.
+The override file is parsed as strict `KEY=value` data, not executed as shell. Use absolute
+paths; shell expansion like `$HOME` and `~` is intentionally not supported in this file.
+
+Most settings are loaded on the next tick. Run `./scripts/install.sh --force` after changing
+`MPM_INTERVAL_SECONDS`, because that value is rendered into the launchd plist.
+
+## Notification Permission
+
+The first notification may trigger a macOS permission prompt for Script Editor or
+`osascript`. Approve it to receive future alerts.
+
+To trigger that prompt proactively:
+
+```sh
+osascript -e 'display notification "Notifications are enabled." with title "Memory Pressure Monitor test"'
+```
+
+## Login Behavior
+
+The launchd agent has `RunAtLoad` and `StartInterval`, so it starts again at login as long as
+this repository stays at the same path. If you move the repo, run `./scripts/install.sh --force`
+from the new location.
 
 ## Logs
 

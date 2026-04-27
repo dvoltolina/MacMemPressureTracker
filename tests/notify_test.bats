@@ -4,6 +4,7 @@
 setup() {
   REPO_ROOT="$(cd "${BATS_TEST_DIRNAME}/.." && pwd)"
   TMP="$(mktemp -d)"
+  export TMP
   export MPM_LOG_PATH="${TMP}/log.jsonl"
   export MPM_NOTIFICATION_BACKEND=stderr
   # shellcheck source=/dev/null
@@ -27,15 +28,7 @@ teardown() {
   [[ "$output" == *"sound=Submarine"* ]]
 }
 
-@test "applescript escaping handles double-quote and backslash" {
-  run bash -c "
-    source '${REPO_ROOT}/lib/notify.sh'
-    _notify::escape_applescript 'a\"b\\\\c'
-  "
-  [ "$output" = 'a\"b\\\\c' ]
-}
-
-@test "osascript backend invokes osascript with escaped script" {
+@test "osascript backend passes user strings as argv" {
   # Stub osascript on PATH; capture its argv.
   STUB="${TMP}/bin"
   mkdir -p "${STUB}"
@@ -45,11 +38,13 @@ printf '%s\n' "$@" > "${TMP}/osascript.argv"
 exit 0
 STUB
   chmod +x "${STUB}/osascript"
-  PATH="${STUB}:${PATH}" MPM_NOTIFICATION_BACKEND=osascript notify::send 'Hello' 'World "X"'
+  PATH="${STUB}:${PATH}" MPM_NOTIFICATION_BACKEND=osascript notify::send 'Hello "Q"' 'World "X"' 'Submarine'
   run cat "${TMP}/osascript.argv"
   [[ "$output" == *'-e'* ]]
   [[ "$output" == *'display notification'* ]]
-  [[ "$output" == *'\"X\"'* ]]
+  [[ "$output" == *'Hello "Q"'* ]]
+  [[ "$output" == *'World "X"'* ]]
+  [[ "$output" == *'Submarine'* ]]
 }
 
 @test "osascript backend returns non-zero on failure" {

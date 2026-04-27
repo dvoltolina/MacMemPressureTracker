@@ -25,7 +25,7 @@ _pressure::zone_from_level() {
     1) printf 'normal' ;;
     2) printf 'warn' ;;
     4) printf 'red' ;;
-    *) printf 'normal' ;;
+    *) return 1 ;;
   esac
 }
 
@@ -99,26 +99,21 @@ pressure::parse_compressed() {
 # pressure::sample
 # Emits one JSON line:
 #   {"zone":"normal|warn|red","free_pct":<int>,"compressed_pages":<int>,"swap_used_mib":<int>}
-# Returns non-zero only if every primitive failed; partial failures are
-# absorbed (missing fields default to 0 / "normal").
+# Returns non-zero if the primary pressure-level primitive fails or
+# reports an unknown enum. Secondary fields default to 0 on failure.
 pressure::sample() {
   local raw_level zone free_pct compressed swap_used
-  local ok=0
 
-  raw_level="$(_pressure::_invoke_external pressure_level | pressure::parse_pressure_level)" && ok=1 || raw_level=""
-  if [ -z "${raw_level}" ]; then
-    zone="normal"
-  else
-    zone="$(_pressure::zone_from_level "${raw_level}")"
-  fi
-
-  free_pct="$(_pressure::_invoke_external free_level | pressure::parse_free_level)" && ok=1 || free_pct="0"
-  compressed="$(_pressure::_invoke_external vm_stat | pressure::parse_compressed)" && ok=1 || compressed="0"
-  swap_used="$(_pressure::_invoke_external swapusage | pressure::parse_swap)" && ok=1 || swap_used="0"
-
-  if [ "${ok}" -eq 0 ]; then
+  if ! raw_level="$(_pressure::_invoke_external pressure_level | pressure::parse_pressure_level)"; then
     return 1
   fi
+  if ! zone="$(_pressure::zone_from_level "${raw_level}")"; then
+    return 1
+  fi
+
+  free_pct="$(_pressure::_invoke_external free_level | pressure::parse_free_level)" || free_pct="0"
+  compressed="$(_pressure::_invoke_external vm_stat | pressure::parse_compressed)" || compressed="0"
+  swap_used="$(_pressure::_invoke_external swapusage | pressure::parse_swap)" || swap_used="0"
 
   printf '{"zone":"%s","free_pct":%s,"compressed_pages":%s,"swap_used_mib":%s}\n' \
     "${zone}" "${free_pct}" "${compressed}" "${swap_used}"

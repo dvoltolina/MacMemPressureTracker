@@ -44,11 +44,9 @@ test:  ## Run the bats-core test suite.
 check: fmt-check lint test  ## Run formatter, linter, and tests (CI gate).
 
 .PHONY: install
-install:  ## Install the launchd user agent. (Pending implementation.)
-	@echo "scripts/install.sh not yet implemented (see prompts/memory-monitor-mvp/)."
-	@exit 1
+install:  ## Install the launchd user agent.
+	./scripts/install.sh
 
 .PHONY: uninstall
-uninstall:  ## Uninstall the launchd user agent. (Pending implementation.)
-	@echo "scripts/uninstall.sh not yet implemented (see prompts/memory-monitor-mvp/)."
-	@exit 1
+uninstall:  ## Uninstall the launchd user agent.
+	./scripts/uninstall.sh

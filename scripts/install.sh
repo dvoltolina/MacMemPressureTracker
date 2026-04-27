@@ -20,11 +20,8 @@ PLIST_DEST="${HOME}/Library/LaunchAgents/${LABEL}.plist"
 LOG_DIR="${HOME}/Library/Logs"
 
 # shellcheck source=/dev/null
-. "${REPO_ROOT}/config/defaults.sh"
-if [ -f "${HOME}/.config/memory-pressure-monitor/config.sh" ]; then
-  # shellcheck source=/dev/null
-  . "${HOME}/.config/memory-pressure-monitor/config.sh"
-fi
+. "${REPO_ROOT}/lib/config.sh"
+config::load
 
 usage() {
   cat <<EOF
@@ -56,6 +53,11 @@ while [ $# -gt 0 ]; do
   esac
   shift
 done
+
+if [ "$(id -u)" -eq 0 ]; then
+  printf 'do not run install.sh with sudo; install as the logged-in user.\n' >&2
+  exit 1
+fi
 
 if [ ! -f "${TEMPLATE}" ]; then
   printf 'template not found: %s\n' "${TEMPLATE}" >&2

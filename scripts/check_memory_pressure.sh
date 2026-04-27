@@ -4,27 +4,37 @@
 # Sample memory pressure / swap once. If pressure is red or swap is in
 # use, fire a debounced notification. Always log the sample.
 
-set -euo pipefail
+set -Eeuo pipefail
 IFS=$'\n\t'
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
 # shellcheck source=/dev/null
-. "${REPO_ROOT}/config/defaults.sh"
-
-if [ -f "${HOME}/.config/memory-pressure-monitor/config.sh" ]; then
-  # shellcheck source=/dev/null
-  . "${HOME}/.config/memory-pressure-monitor/config.sh"
-fi
-
+. "${REPO_ROOT}/lib/config.sh"
+config::load
 # shellcheck source=/dev/null
 . "${REPO_ROOT}/lib/log.sh"
+trap 'log::error tick_failed line="${LINENO}" cmd="${BASH_COMMAND}"' ERR
 # shellcheck source=/dev/null
 . "${REPO_ROOT}/lib/state.sh"
 # shellcheck source=/dev/null
 . "${REPO_ROOT}/lib/notify.sh"
 # shellcheck source=/dev/null
 . "${REPO_ROOT}/lib/pressure.sh"
+
+send_alert() {
+  local kind="$1" title="$2" body="$3"
+
+  if notify::send "${title}" "${body}" "${MPM_NOTIFICATION_SOUND:-}"; then
+    log::info alert_fired kind="${kind}"
+  else
+    log::warn alert_failed kind="${kind}"
+  fi
+
+  # Record attempts, not only successful deliveries. A denied or failing
+  # notification backend should not retry every launchd tick.
+  state::record_alert "${kind}"
+}
 
 main() {
   local sample
@@ -46,28 +56,46 @@ main() {
     compressed_pages="${compressed}" \
     swap_used_mib="${swap_used}"
 
+  local red_active swap_now red_attempted
+  red_active=0
+  swap_now=0
+  red_attempted=0
+
   if pressure::is_red "${sample}"; then
+    red_active=1
+  fi
+  if pressure::swap_in_use "${sample}"; then
+    swap_now=1
+  fi
+
+  if [ "${red_active}" -eq 1 ]; then
     if state::should_alert red_pressure; then
-      notify::send "Memory pressure: red" \
-        "Free ${free_pct}%, ${compressed} compressed pages." \
-        "${MPM_NOTIFICATION_SOUND:-}"
-      state::record_alert red_pressure
-      log::info alert_fired kind=red_pressure
+      red_attempted=1
+      send_alert red_pressure \
+        "Memory pressure critical" \
+        "Free ${free_pct}%; swap ${swap_used} MiB. Close high-memory apps."
     else
       log::info alert_suppressed kind=red_pressure reason=cooldown
     fi
   fi
 
-  if pressure::swap_in_use "${sample}"; then
-    if state::should_alert swap_in_use; then
-      notify::send "Swap in use" \
-        "Swap used: ${swap_used} MiB." \
-        "${MPM_NOTIFICATION_SOUND:-}"
+  if [ "${swap_now}" -eq 1 ]; then
+    if state::swap_active; then
+      log::info alert_suppressed kind=swap_in_use reason=still_active
+    elif [ "${red_attempted}" -eq 1 ]; then
       state::record_alert swap_in_use
-      log::info alert_fired kind=swap_in_use
+      log::info alert_coalesced kind=swap_in_use into=red_pressure
+    elif state::should_alert swap_in_use; then
+      send_alert swap_in_use \
+        "Swap started" \
+        "Swap is ${swap_used} MiB (threshold ${MPM_SWAP_THRESHOLD_MIB} MiB). Close high-memory apps."
     else
+      state::set_swap_active true
       log::info alert_suppressed kind=swap_in_use reason=cooldown
     fi
+  elif state::swap_active; then
+    state::set_swap_active false
+    log::info swap_cleared
   fi
 }
 

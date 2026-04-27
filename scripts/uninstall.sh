@@ -15,11 +15,8 @@ LABEL="com.dominic.memory-pressure-monitor"
 PLIST_DEST="${HOME}/Library/LaunchAgents/${LABEL}.plist"
 
 # shellcheck source=/dev/null
-. "${REPO_ROOT}/config/defaults.sh"
-if [ -f "${HOME}/.config/memory-pressure-monitor/config.sh" ]; then
-  # shellcheck source=/dev/null
-  . "${HOME}/.config/memory-pressure-monitor/config.sh"
-fi
+. "${REPO_ROOT}/lib/config.sh"
+config::load
 
 usage() {
   cat <<EOF
@@ -49,6 +46,11 @@ while [ $# -gt 0 ]; do
   shift
 done
 
+if [ "$(id -u)" -eq 0 ]; then
+  printf 'do not run uninstall.sh with sudo; uninstall as the logged-in user.\n' >&2
+  exit 1
+fi
+
 uid="$(id -u)"
 domain="gui/${uid}"
 service="${domain}/${LABEL}"
@@ -70,17 +72,25 @@ else
 fi
 
 if [ "${purge}" -eq 1 ]; then
-  state_path="${MPM_STATE_PATH:-${REPO_ROOT}/state/last_alert.json}"
-  log_path="${MPM_LOG_PATH:-${HOME}/Library/Logs/memory-pressure-monitor.log}"
+  default_state_path="${REPO_ROOT}/state/last_alert.json"
+  default_log_path="${HOME}/Library/Logs/memory-pressure-monitor.log"
+  configured_state_path="${MPM_STATE_PATH:-${default_state_path}}"
+  configured_log_path="${MPM_LOG_PATH:-${default_log_path}}"
   launchd_out="${HOME}/Library/Logs/memory-pressure-monitor.launchd.out.log"
   launchd_err="${HOME}/Library/Logs/memory-pressure-monitor.launchd.err.log"
-  for f in "${state_path}" "${log_path}" "${launchd_out}" "${launchd_err}"; do
+  for f in "${default_state_path}" "${default_log_path}" "${launchd_out}" "${launchd_err}"; do
     if [ -f "${f}" ]; then
       rm -f "${f}"
       printf '✓ purged: %s\n' "${f}"
     fi
   done
-  state_dir="$(dirname "${state_path}")"
+  if [ "${configured_state_path}" != "${default_state_path}" ]; then
+    printf '  skipped configured state path outside default purge scope: %s\n' "${configured_state_path}"
+  fi
+  if [ "${configured_log_path}" != "${default_log_path}" ]; then
+    printf '  skipped configured log path outside default purge scope: %s\n' "${configured_log_path}"
+  fi
+  state_dir="$(dirname "${default_state_path}")"
   if [ -d "${state_dir}" ]; then
     rmdir "${state_dir}" 2> /dev/null || true
   fi

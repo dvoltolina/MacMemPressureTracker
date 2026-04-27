@@ -49,3 +49,14 @@ Format conventions:
 - `feat(launchd):` plist template + `scripts/install.sh` (with `--dry-run`/`--force`) + `scripts/uninstall.sh` (with `--purge`). Rendered plist passes `plutil -lint` with the path-with-spaces repo location.
 - **End-to-end shipped:** real `launchctl bootstrap` succeeded on macOS 26.1; first launchd-driven tick fired one swap_in_use notification (existing 2782 MiB swap on the device), second tick suppressed under cooldown. Install / install-noop / `--force` / uninstall / uninstall-idempotent all verified.
 - `docs:` align README and REPO_STATUS with shipped v1.
+
+### Fixes
+
+- `fix(config):` replace executable user-config sourcing with strict `KEY=value` parsing and startup validation for numeric, backend, and path settings.
+- `fix(state):` add persisted `swap_active` state so swap alerts fire on inactive → active transitions rather than repeating every cooldown while swap remains in use.
+- `fix(check):` fail ticks on malformed primary pressure-level output, handle notification backend failures without aborting the whole check, record failed notification attempts for cooldown, and coalesce red+swap incidents into one notification.
+- `fix(uninstall):` constrain `--purge` to default app-owned state/log paths and refuse root/sudo install or uninstall.
+- `fix(notify):` pass notification title/body/sound to `osascript` as argv instead of interpolating user data into AppleScript source.
+- `fix(log):` create log files with mode `0644` and refuse symlinked log targets.
+- `test:` add config and install dry-run tests; expand pressure, state, notify, and entrypoint tests for audit regressions.
+- `docs:` align CLAUDE, AGENTS, ARCHITECTURE, CONSISTENCY, README, REPO_STATUS, and the memory-monitor prompt pack with the shipped sysctl-based implementation and audit fixes.

@@ -6,13 +6,15 @@
 #   state::path                       -> prints the resolved state file path
 #   state::should_alert <kind>        -> exit 0 if cooldown elapsed, 1 if not
 #   state::record_alert <kind>        -> writes a fresh timestamp for <kind>
+#   state::swap_active                -> exit 0 if swap was active on last tick
+#   state::set_swap_active <true|false>
 #   state::reset                      -> deletes the state file
 #
 # kind ∈ {red_pressure, swap_in_use}
 # Cooldowns from MPM_RED_COOLDOWN_SECONDS / MPM_SWAP_COOLDOWN_SECONDS.
 #
 # State file format (schema=1):
-#   {"schema":1,"last_alert":{"red_pressure":"<iso8601>|null","swap_in_use":"<iso8601>|null"}}
+#   {"schema":1,"last_alert":{"red_pressure":"<iso8601>|null","swap_in_use":"<iso8601>|null"},"swap_active":false}
 #
 # Honors:
 #   MPM_STATE_PATH   — full path override
@@ -98,10 +100,42 @@ _state::extract() {
   '
 }
 
+# _state::extract_swap_active: prints true/false if present, else empty.
+_state::extract_swap_active() {
+  local path raw
+  path="$(state::path)"
+  [ -f "${path}" ] || return 0
+  raw="$(cat "${path}" 2> /dev/null)" || return 0
+  printf '%s' "${raw}" | awk '
+    /"swap_active"[[:space:]]*:[[:space:]]*true/ { print "true"; exit }
+    /"swap_active"[[:space:]]*:[[:space:]]*false/ { print "false"; exit }
+  '
+}
+
+_state::current_swap_active_literal() {
+  local active last_swap
+  active="$(_state::extract_swap_active)"
+  case "${active}" in
+    true | false)
+      printf '%s' "${active}"
+      return
+      ;;
+  esac
+
+  # Backward-compatible inference for v1 state files that predate
+  # swap_active: a stored swap alert means the last known state was active.
+  last_swap="$(_state::extract swap_in_use)"
+  if [ -n "${last_swap}" ]; then
+    printf 'true'
+  else
+    printf 'false'
+  fi
+}
+
 # _state::write_atomic: writes both kinds (preserving the other when only
 # one is being updated). Atomic via temp file + mv.
 _state::write_atomic() {
-  local red="$1" swap="$2"
+  local red="$1" swap="$2" swap_active="$3"
   local path tmp dir
   path="$(state::path)"
   dir="$(dirname "${path}")"
@@ -119,9 +153,13 @@ _state::write_atomic() {
   else
     swap_field="\"${swap}\""
   fi
+  case "${swap_active}" in
+    true | false) ;;
+    *) swap_active='false' ;;
+  esac
 
-  printf '{"schema":1,"last_alert":{"red_pressure":%s,"swap_in_use":%s}}\n' \
-    "${red_field}" "${swap_field}" > "${tmp}"
+  printf '{"schema":1,"last_alert":{"red_pressure":%s,"swap_in_use":%s},"swap_active":%s}\n' \
+    "${red_field}" "${swap_field}" "${swap_active}" > "${tmp}"
   mv -f "${tmp}" "${path}"
   chmod 0644 "${path}" 2> /dev/null || true
 }
@@ -170,17 +208,38 @@ state::record_alert() {
   local now_iso
   now_iso="$(_state::iso_now)"
 
-  local red swap
+  local red swap swap_active
   red="$(_state::extract red_pressure)"
   swap="$(_state::extract swap_in_use)"
+  swap_active="$(_state::current_swap_active_literal)"
 
   case "${kind}" in
     red_pressure) red="${now_iso}" ;;
-    swap_in_use) swap="${now_iso}" ;;
+    swap_in_use)
+      swap="${now_iso}"
+      swap_active='true'
+      ;;
     *) return 2 ;;
   esac
 
-  _state::write_atomic "${red}" "${swap}"
+  _state::write_atomic "${red}" "${swap}" "${swap_active}"
+}
+
+state::swap_active() {
+  [ "$(_state::current_swap_active_literal)" = "true" ]
+}
+
+state::set_swap_active() {
+  local desired="$1"
+  case "${desired}" in
+    true | false) ;;
+    *) return 2 ;;
+  esac
+
+  local red swap
+  red="$(_state::extract red_pressure)"
+  swap="$(_state::extract swap_in_use)"
+  _state::write_atomic "${red}" "${swap}" "${desired}"
 }
 
 state::reset() {

@@ -29,6 +29,7 @@ teardown() {
   run cat "${MPM_STATE_PATH}"
   [[ "$output" == *'"red_pressure":"2026-04-27T08:45:00-07:00"'* ]]
   [[ "$output" == *'"swap_in_use":null'* ]]
+  [[ "$output" == *'"swap_active":false'* ]]
 }
 
 @test "should_alert: just-recorded alert is suppressed within cooldown" {
@@ -88,4 +89,24 @@ teardown() {
 @test "should_alert with unknown kind returns rc=2" {
   run state::should_alert garbage_kind
   [ "$status" -eq 2 ]
+}
+
+@test "swap_active toggles explicitly" {
+  run state::swap_active
+  [ "$status" -ne 0 ]
+
+  state::set_swap_active true
+  run state::swap_active
+  [ "$status" -eq 0 ]
+
+  state::set_swap_active false
+  run state::swap_active
+  [ "$status" -ne 0 ]
+}
+
+@test "record_alert swap_in_use marks swap active" {
+  TEST_NOW_ISO="2026-04-27T08:45:00-07:00" state::record_alert swap_in_use
+  run cat "${MPM_STATE_PATH}"
+  [[ "$output" == *'"swap_in_use":"2026-04-27T08:45:00-07:00"'* ]]
+  [[ "$output" == *'"swap_active":true'* ]]
 }

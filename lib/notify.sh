@@ -10,20 +10,12 @@
 #   terminal-notifier  (opt-in)  — falls back to osascript if not on PATH
 #   stderr             (test)    — prints a deterministic line to stderr
 #
-# Title and body are escaped before being embedded in AppleScript.
+# Title and body are passed to AppleScript as argv, not interpolated into
+# AppleScript source.
 #
 # Depends on lib/log.sh.
 
 # shellcheck shell=bash
-
-# _notify::escape_applescript: doubles every backslash and double-quote so
-# the value can be safely embedded inside an AppleScript double-quoted string.
-_notify::escape_applescript() {
-  local s="$1"
-  s="${s//\\/\\\\}"
-  s="${s//\"/\\\"}"
-  printf '%s' "${s}"
-}
 
 # _notify::escape_argv: prints argv[1] as a deterministic literal — used for
 # stderr backend output. Just trim line breaks.
@@ -44,16 +36,19 @@ _notify::backend_stderr() {
 
 _notify::backend_osascript() {
   local title="$1" body="$2" sound="${3:-}"
-  local et eb es script
-  et="$(_notify::escape_applescript "${title}")"
-  eb="$(_notify::escape_applescript "${body}")"
   if [ -n "${sound}" ]; then
-    es="$(_notify::escape_applescript "${sound}")"
-    script="display notification \"${eb}\" with title \"${et}\" sound name \"${es}\""
+    osascript \
+      -e 'on run argv' \
+      -e 'display notification (item 2 of argv) with title (item 1 of argv) sound name (item 3 of argv)' \
+      -e 'end run' \
+      "${title}" "${body}" "${sound}"
   else
-    script="display notification \"${eb}\" with title \"${et}\""
+    osascript \
+      -e 'on run argv' \
+      -e 'display notification (item 2 of argv) with title (item 1 of argv)' \
+      -e 'end run' \
+      "${title}" "${body}"
   fi
-  osascript -e "${script}"
 }
 
 _notify::backend_terminal_notifier() {

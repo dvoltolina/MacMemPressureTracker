@@ -126,3 +126,19 @@ setup() {
   [[ "$output" == *'"zone":"normal"'* ]]
   [[ "$output" == *'"swap_used_mib":0'* ]]
 }
+
+@test "sample: malformed primary pressure level fails even if secondary fields parse" {
+  run bash -c "
+    source '${REPO_ROOT}/lib/pressure.sh'
+    _pressure::_invoke_external() {
+      case \"\$1\" in
+        pressure_level) printf 'kern.memorystatus_vm_pressure_level: nope\n' ;;
+        free_level) cat '${FIX}/sysctl_memorystatus_level.txt' ;;
+        vm_stat) cat '${FIX}/vm_stat_macos26.txt' ;;
+        swapusage) cat '${FIX}/sysctl_swapusage_inactive.txt' ;;
+      esac
+    }
+    pressure::sample
+  "
+  [ "$status" -ne 0 ]
+}

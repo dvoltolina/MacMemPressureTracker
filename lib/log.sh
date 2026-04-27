@@ -73,7 +73,18 @@ _log::emit() {
     mkdir -p "${log_dir}" 2> /dev/null || true
   fi
 
+  if [ -L "${log_path}" ]; then
+    printf 'log target is a symlink, refusing to write: %s\n' "${log_path}" >&2
+    return 0
+  fi
+
+  if [ ! -e "${log_path}" ]; then
+    : > "${log_path}" 2> /dev/null || true
+    chmod 0644 "${log_path}" 2> /dev/null || true
+  fi
+
   printf '%s\n' "${out}" >> "${log_path}" 2> /dev/null || true
+  chmod 0644 "${log_path}" 2> /dev/null || true
 
   if [ "${MPM_LOG_TEE_STDERR:-0}" = "1" ]; then
     printf '%s\n' "${out}" >&2
