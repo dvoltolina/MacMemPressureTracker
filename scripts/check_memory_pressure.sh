@@ -117,6 +117,11 @@ main() {
   if [ "${swap_now}" -eq 1 ]; then
     local prev_alerted growth_threshold
     prev_alerted="$(state::swap_alerted_mib)"
+    # Defensive default: state::swap_alerted_mib always prints something,
+    # but keep this in case a future refactor lets it return empty under
+    # `set -u`. Without the default, the arithmetic below would abort the
+    # tick.
+    prev_alerted="${prev_alerted:-0}"
     growth_threshold="${MPM_SWAP_GROWTH_MIB:-1024}"
 
     local should_fire_swap=0 fire_reason=""
