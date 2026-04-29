@@ -74,14 +74,13 @@ _notify::backend_terminal_notifier() {
 }
 
 _notify::popup_app_binary() {
-  local override="${MPM_POPUP_APP_BINARY:-}"
-  if [ -n "${override}" ]; then
-    printf '%s' "${override}"
-    return
-  fi
   local repo_root
   repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
   printf '%s/build/Memory Pressure Monitor.app/Contents/MacOS/Memory Pressure Monitor' "${repo_root}"
+}
+
+_notify::popup_already_visible() {
+  pgrep -f 'Memory Pressure Monitor.*--alert' > /dev/null 2>&1
 }
 
 _notify::backend_popup() {
@@ -98,6 +97,17 @@ _notify::backend_popup() {
     fi
     _notify::backend_osascript "${title}" "${body}" "${sound}"
     return $?
+  fi
+
+  # If a popup from a prior tick is still on screen, do not stack a second
+  # one. The cooldown that follows this call still starts as if the alert
+  # was delivered — that is intentional. The visible popup already conveys
+  # the situation; another one only adds noise.
+  if _notify::popup_already_visible; then
+    if command -v log::info > /dev/null 2>&1; then
+      log::info notify_skip reason=popup_already_visible kind="${kind}"
+    fi
+    return 0
   fi
 
   # Run the app detached so the launchd tick does not block on an
