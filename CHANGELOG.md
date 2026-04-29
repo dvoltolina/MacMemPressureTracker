@@ -15,6 +15,15 @@ Format conventions:
 
 - `feat(app):` live pressure chart in the dashboard window. Reads the JSONL log directly (last 256 KB tail), filters `sample_taken` events, and draws the last 240 samples as a blue line/area with per-sample dots colored by zone (green=normal, orange=warn, red=critical). HH:MM tick labels at the X-edges, 0/25/50/75/100% gridlines on the Y-axis, and a top-right legend showing the most recent free %, zone, and swap MiB. Auto-refreshes every 15 s while the window is open. Window default size bumped to 680×600 with min 560×520 to fit the chart.
 
+### Feature: active-alerts
+
+- `feat(state):` schema 2 — replace the boolean `swap_active` field with a `swap_alerted_mib` integer high-water mark, and add a `warn_pressure` last-alert slot. Schema 1 is read transparently and rewritten as schema 2 on the next alert update. New API: `state::swap_alerted_mib`, `state::set_swap_alerted_mib`, `state::record_alert <kind> [<swap_used_mib>]`.
+- `feat(check):` warn-zone alerts and swap-growth re-fire. The decision rule now fires `warn_pressure` (separate cooldown) when not already firing red, and re-fires `swap_in_use` when current swap exceeds `swap_alerted_mib + MPM_SWAP_GROWTH_MIB`. Closes the missed-alert path where a machine that lived in `warn` zone with multi-GiB swap got no notifications after the first boot-time observation.
+- `feat(config):` new keys `MPM_WARN_ALERTS_ENABLED` (default 1), `MPM_WARN_COOLDOWN_SECONDS` (default 1800), `MPM_SWAP_GROWTH_MIB` (default 1024). Validated in `lib/config.sh`.
+- `feat(notify):` new `popup` backend that runs the dashboard binary in `--alert` mode detached. Falls back to `osascript` if the app bundle is missing, logging `notify_fallback reason=app_missing`. Default `MPM_NOTIFICATION_BACKEND` changes from `osascript` to `popup`. `notify::send` signature gains forwarded `kind` and per-alert context args (`--zone`, `--free-pct`, `--swap-mib`).
+- `feat(app):` `--alert` mode in the dashboard binary. Argv contract: `--alert <kind> --title <text> --body <text> [--zone <z>] [--free-pct <n>] [--swap-mib <n>]`. Shows a centered, floating, frontmost `NSAlert` with a top-8-by-RSS process table and two buttons: "Open Activity Monitor" and "Dismiss". Auto-dismisses after 90 s. Advisory only — does not kill processes.
+- `docs:` align README, ARCHITECTURE, and REPO_STATUS with active-alerts. Add new config table to README.
+
 ### Fixes
 
 - `fix(app):` add explicit `static func main()` so the dashboard's AppKit run loop actually starts. Without it, `@main` on a bare `NSApplicationDelegate` synthesizes a no-op entry point, `applicationDidFinishLaunching` never fires, and the window never appears (the user reported "no available windows").

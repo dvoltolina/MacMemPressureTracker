@@ -1,8 +1,10 @@
 # Memory Pressure Monitor
 
-A small macOS background utility that sends a notification when memory pressure becomes
-critical or swap is first observed in use. After swap clears, a later return to swap usage
-can notify again.
+A small macOS background utility that sends a notification when memory pressure rises into
+the warn or critical zone, or when swap usage grows past the last-alerted level. By default
+alerts are shown as a centered popup window listing the top processes by memory; the popup
+points at Activity Monitor for follow-up. The classic macOS banner (`osascript`) remains
+available behind a config switch.
 
 It runs as a user-level `launchd` agent. The background monitor has no always-running GUI,
 server, telemetry, or third-party runtime dependency. An optional dashboard app can be built
@@ -112,17 +114,20 @@ Defaults live in `config/defaults.sh`. To override them, create:
 ~/.config/memory-pressure-monitor/config.sh
 ```
 
-Example:
+All keys, with their defaults:
 
-```sh
-MPM_INTERVAL_SECONDS=30
-MPM_RED_COOLDOWN_SECONDS=600
-MPM_SWAP_COOLDOWN_SECONDS=900
-MPM_SWAP_THRESHOLD_MIB=64
-MPM_NOTIFICATION_BACKEND=osascript
-MPM_NOTIFICATION_SOUND=
-MPM_LOG_PATH=/Users/dominic/Library/Logs/memory-pressure-monitor.log
-```
+| Key | Default | Effect |
+| --- | --- | --- |
+| `MPM_INTERVAL_SECONDS` | `30` | How often launchd invokes the sampler. Rendered into the plist; needs `install.sh --force` to take effect. |
+| `MPM_RED_COOLDOWN_SECONDS` | `600` | Cooldown before another red-zone alert. |
+| `MPM_WARN_ALERTS_ENABLED` | `1` | Set to `0` to silence warn-zone alerts entirely. |
+| `MPM_WARN_COOLDOWN_SECONDS` | `1800` | Cooldown before another warn-zone alert. |
+| `MPM_SWAP_COOLDOWN_SECONDS` | `900` | Cooldown before another swap alert. |
+| `MPM_SWAP_THRESHOLD_MIB` | `64` | Swap level at or above which swap is considered "in use". |
+| `MPM_SWAP_GROWTH_MIB` | `1024` | Re-fire a swap alert once swap grows this many MiB above the last-alerted level. |
+| `MPM_NOTIFICATION_BACKEND` | `popup` | `popup` (centered window, default), `osascript` (banner), `terminal-notifier`, or `stderr` (test). |
+| `MPM_NOTIFICATION_SOUND` | _(empty)_ | Optional system sound name for the banner backends. |
+| `MPM_LOG_PATH` | `~/Library/Logs/memory-pressure-monitor.log` | App log path. |
 
 The override file is parsed as strict `KEY=value` data, not executed as shell. Use absolute
 paths; shell expansion like `$HOME` and `~` is intentionally not supported in this file.
@@ -130,10 +135,25 @@ paths; shell expansion like `$HOME` and `~` is intentionally not supported in th
 Most settings are loaded on the next tick. Run `./scripts/install.sh --force` after changing
 `MPM_INTERVAL_SECONDS`, because that value is rendered into the launchd plist.
 
+### Notification Backend
+
+`popup` (default) launches the dashboard binary in alert mode and shows a centered window
+that lists the top 8 processes by RSS, with an "Open Activity Monitor" button. The popup
+auto-dismisses after 90 seconds. The popup binary is the same `Memory Pressure Monitor.app`
+built by `make app`; if the app bundle is missing, the sampler falls back to `osascript`
+and logs `notify_fallback reason=app_missing`.
+
+To switch back to the classic macOS banner:
+
+```sh
+MPM_NOTIFICATION_BACKEND=osascript
+```
+
 ## Notification Permission
 
-The first notification may trigger a macOS permission prompt for Script Editor or
-`osascript`. Approve it to receive future alerts.
+The first time the banner backend fires, macOS may prompt for permission for Script Editor
+or `osascript`. Approve it to receive future banner alerts. The popup backend does not need
+notification permission since it is a regular app window.
 
 To trigger that prompt proactively:
 
