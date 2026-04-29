@@ -9,6 +9,14 @@ Format conventions:
 
 ---
 
+## 2026-04-29
+
+### Fixes
+
+- `fix(app):` add explicit `static func main()` so the dashboard's AppKit run loop actually starts. Without it, `@main` on a bare `NSApplicationDelegate` synthesizes a no-op entry point, `applicationDidFinishLaunching` never fires, and the window never appears (the user reported "no available windows").
+
+---
+
 ## 2026-04-27
 
 ### Bootstrap
