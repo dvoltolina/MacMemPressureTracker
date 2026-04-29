@@ -126,11 +126,13 @@ _state::has_key() {
 }
 
 # _state::extract_int <key>: prints integer value of <key>, or empty.
+# Flattens newlines first so a pretty-printed state file (one field per
+# line, hand-edited or migrated by future tooling) is read correctly.
 _state::extract_int() {
   local key="$1" raw
   raw="$(_state::raw)"
   [ -n "${raw}" ] || return 0
-  printf '%s' "${raw}" | awk -v k="${key}" '
+  printf '%s' "${raw}" | tr '\n\r\t' '   ' | awk -v k="${key}" '
     {
       pat = "\"" k "\"[[:space:]]*:[[:space:]]*-?[0-9]+";
       if (!match($0, pat)) exit;
@@ -157,7 +159,11 @@ _state::current_swap_alerted_mib() {
   local v legacy
   v="$(_state::extract_int swap_alerted_mib)"
   if [ -n "${v}" ]; then
-    printf '%s' "${v}"
+    if [ "${#v}" -gt 12 ]; then
+      printf '0'
+    else
+      printf '%s' "${v}"
+    fi
     return
   fi
 
@@ -212,6 +218,13 @@ _state::write_atomic() {
   case "${swap_alerted_mib}" in
     '' | *[!0-9]*) swap_alerted_mib='0' ;;
   esac
+  # Defensive width clamp — bash arithmetic on macOS bash 3.2 is 64-bit
+  # but the rest of the system (sysctl, vm_stat) cannot meaningfully
+  # produce more than ~12 digits of MiB. Anything larger is corruption;
+  # treat it as 0 so the next tick re-baselines.
+  if [ "${#swap_alerted_mib}" -gt 12 ]; then
+    swap_alerted_mib='0'
+  fi
 
   printf '{"schema":2,"last_alert":{"red_pressure":%s,"warn_pressure":%s,"swap_in_use":%s},"swap_alerted_mib":%s}\n' \
     "${red_field}" "${warn_field}" "${swap_field}" "${swap_alerted_mib}" > "${tmp}"
