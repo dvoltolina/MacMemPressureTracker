@@ -3,15 +3,16 @@
 # Sourced, never executed.
 #
 # Public API:
-#   notify::send <title> <body> [sound]
+#   notify::send <title> <body> [sound] [kind] [extra-args...]
 #
 # Backends (selected via MPM_NOTIFICATION_BACKEND):
-#   osascript          (default) — macOS native AppleScript notification
+#   popup              (default) — centered window via the dashboard app
+#   osascript                    — macOS native AppleScript banner
 #   terminal-notifier  (opt-in)  — falls back to osascript if not on PATH
 #   stderr             (test)    — prints a deterministic line to stderr
 #
-# Title and body are passed to AppleScript as argv, not interpolated into
-# AppleScript source.
+# Title and body are passed to AppleScript / the helper as argv, never
+# interpolated into AppleScript source.
 #
 # Depends on lib/log.sh.
 
@@ -28,10 +29,15 @@ _notify::escape_argv() {
 
 _notify::backend_stderr() {
   local title="$1" body="$2" sound="${3:-}"
-  printf 'notify: title=%s body=%s sound=%s\n' \
+  shift 3 2> /dev/null || shift $#
+  local kind="${1:-}"
+  local extras="$*"
+  printf 'notify: title=%s body=%s sound=%s kind=%s extras=%s\n' \
     "$(_notify::escape_argv "${title}")" \
     "$(_notify::escape_argv "${body}")" \
-    "$(_notify::escape_argv "${sound}")" >&2
+    "$(_notify::escape_argv "${sound}")" \
+    "$(_notify::escape_argv "${kind}")" \
+    "$(_notify::escape_argv "${extras}")" >&2
 }
 
 _notify::backend_osascript() {
@@ -67,22 +73,64 @@ _notify::backend_terminal_notifier() {
   fi
 }
 
+_notify::popup_app_binary() {
+  local override="${MPM_POPUP_APP_BINARY:-}"
+  if [ -n "${override}" ]; then
+    printf '%s' "${override}"
+    return
+  fi
+  local repo_root
+  repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+  printf '%s/build/Memory Pressure Monitor.app/Contents/MacOS/Memory Pressure Monitor' "${repo_root}"
+}
+
+_notify::backend_popup() {
+  local title="$1" body="$2" sound="${3:-}"
+  shift 3 2> /dev/null || shift $#
+  local kind="${1:-info}"
+  shift 2> /dev/null || true
+
+  local binary
+  binary="$(_notify::popup_app_binary)"
+  if [ ! -x "${binary}" ]; then
+    if command -v log::warn > /dev/null 2>&1; then
+      log::warn notify_fallback reason=app_missing path="${binary}"
+    fi
+    _notify::backend_osascript "${title}" "${body}" "${sound}"
+    return $?
+  fi
+
+  # Run the app detached so the launchd tick does not block on an
+  # interactive popup the user might leave open.
+  nohup "${binary}" \
+    --alert "${kind}" \
+    --title "${title}" \
+    --body "${body}" \
+    "$@" > /dev/null 2>&1 &
+  disown 2> /dev/null || true
+  return 0
+}
+
 notify::send() {
   local title="$1" body="$2" sound="${3:-${MPM_NOTIFICATION_SOUND:-}}"
-  local backend="${MPM_NOTIFICATION_BACKEND:-osascript}"
+  shift 3 2> /dev/null || shift $#
+  local kind="${1:-info}"
+  shift 2> /dev/null || true
+  local backend="${MPM_NOTIFICATION_BACKEND:-popup}"
   local rc=0
 
   case "${backend}" in
-    stderr) _notify::backend_stderr "${title}" "${body}" "${sound}" || rc=$? ;;
+    popup) _notify::backend_popup "${title}" "${body}" "${sound}" "${kind}" "$@" || rc=$? ;;
+    stderr) _notify::backend_stderr "${title}" "${body}" "${sound}" "${kind}" "$@" || rc=$? ;;
     terminal-notifier) _notify::backend_terminal_notifier "${title}" "${body}" "${sound}" || rc=$? ;;
     osascript | *) _notify::backend_osascript "${title}" "${body}" "${sound}" || rc=$? ;;
   esac
 
   if command -v log::info > /dev/null 2>&1; then
     if [ "${rc}" -eq 0 ]; then
-      log::info notify_attempt backend="${backend}" rc=0
+      log::info notify_attempt backend="${backend}" rc=0 kind="${kind}"
     else
-      log::warn notify_failed backend="${backend}" rc="${rc}"
+      log::warn notify_failed backend="${backend}" rc="${rc}" kind="${kind}"
     fi
   fi
 
