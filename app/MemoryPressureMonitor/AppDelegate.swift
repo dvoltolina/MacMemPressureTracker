@@ -4,10 +4,17 @@ import Darwin
 @main
 final class AppDelegate: NSObject, NSApplicationDelegate {
   static func main() {
+    let parsed = AppArguments.parse(CommandLine.arguments)
     let app = NSApplication.shared
-    let delegate = AppDelegate()
-    app.delegate = delegate
-    app.run()
+    if parsed.alertKind != nil {
+      let delegate = AlertController(arguments: parsed)
+      app.delegate = delegate
+      app.run()
+    } else {
+      let delegate = AppDelegate()
+      app.delegate = delegate
+      app.run()
+    }
   }
 
   private var window: NSWindow!
@@ -697,5 +704,221 @@ final class PressureChartView: NSView {
     let s = NSAttributedString(string: pctText, attributes: attrs)
     let sz = s.size()
     s.draw(at: CGPoint(x: rect.maxX - sz.width - 10, y: rect.maxY - sz.height - 4))
+  }
+}
+
+struct AppArguments {
+  let alertKind: String?
+  let alertTitle: String
+  let alertBody: String
+  let zone: String?
+  let freePct: Int?
+  let swapMib: Int?
+
+  static func parse(_ argv: [String]) -> AppArguments {
+    var dict: [String: String] = [:]
+    var i = 1
+    while i < argv.count {
+      let key = argv[i]
+      if key.hasPrefix("--"), i + 1 < argv.count {
+        dict[key] = argv[i + 1]
+        i += 2
+      } else {
+        i += 1
+      }
+    }
+    return AppArguments(
+      alertKind: dict["--alert"],
+      alertTitle: dict["--title"] ?? "Memory Pressure Monitor",
+      alertBody: dict["--body"] ?? "",
+      zone: dict["--zone"],
+      freePct: dict["--free-pct"].flatMap(Int.init),
+      swapMib: dict["--swap-mib"].flatMap(Int.init)
+    )
+  }
+}
+
+struct ProcessRow {
+  let pid: Int
+  let rssMib: Int
+  let command: String
+}
+
+enum ProcessLister {
+  // Returns the top `limit` processes by RSS, descending.
+  static func topByRSS(limit: Int) -> [ProcessRow] {
+    let task = Process()
+    task.executableURL = URL(fileURLWithPath: "/bin/ps")
+    task.arguments = ["-A", "-o", "pid=,rss=,comm="]
+    let outPipe = Pipe()
+    let errPipe = Pipe()
+    task.standardOutput = outPipe
+    task.standardError = errPipe
+    do { try task.run() } catch { return [] }
+    task.waitUntilExit()
+    let data = outPipe.fileHandleForReading.readDataToEndOfFile()
+    guard let text = String(data: data, encoding: .utf8) else { return [] }
+
+    var rows: [ProcessRow] = []
+    for raw in text.split(separator: "\n", omittingEmptySubsequences: true) {
+      let line = raw.trimmingCharacters(in: .whitespaces)
+      let parts = line.split(separator: " ", maxSplits: 2, omittingEmptySubsequences: true)
+      guard parts.count == 3,
+        let pid = Int(parts[0]),
+        let rssKb = Int(parts[1])
+      else { continue }
+      let cmd = parts[2].trimmingCharacters(in: .whitespaces)
+      let display = cmd.isEmpty ? "(unknown)" : cmd
+      rows.append(ProcessRow(pid: pid, rssMib: rssKb / 1024, command: display))
+    }
+    rows.sort { $0.rssMib > $1.rssMib }
+    return Array(rows.prefix(limit))
+  }
+}
+
+final class AlertController: NSObject, NSApplicationDelegate {
+  private let args: AppArguments
+  private let autoDismissSeconds: TimeInterval = 90
+  private var dismissTimer: Timer?
+
+  init(arguments: AppArguments) {
+    self.args = arguments
+    super.init()
+  }
+
+  func applicationDidFinishLaunching(_ notification: Notification) {
+    NSApp.setActivationPolicy(.regular)
+    if geteuid() == 0 {
+      NSApp.terminate(nil)
+      return
+    }
+
+    configureMenu()
+    NSApp.activate(ignoringOtherApps: true)
+    presentAlert()
+  }
+
+  func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
+    true
+  }
+
+  private func configureMenu() {
+    let menu = NSMenu()
+    let appItem = NSMenuItem()
+    let appMenu = NSMenu()
+    appMenu.addItem(
+      NSMenuItem(
+        title: "Quit Memory Pressure Monitor",
+        action: #selector(NSApplication.terminate(_:)),
+        keyEquivalent: "q"
+      )
+    )
+    appItem.submenu = appMenu
+    menu.addItem(appItem)
+    NSApp.mainMenu = menu
+  }
+
+  private func presentAlert() {
+    let alert = NSAlert()
+    alert.messageText = args.alertTitle
+    alert.informativeText = composeBody()
+    alert.alertStyle = alertStyle(for: args.alertKind)
+    alert.accessoryView = buildProcessTable()
+    alert.addButton(withTitle: "Open Activity Monitor")
+    alert.addButton(withTitle: "Dismiss")
+    alert.window.level = .floating
+    alert.window.collectionBehavior = [.canJoinAllSpaces, .moveToActiveSpace]
+
+    let timer = Timer(timeInterval: autoDismissSeconds, repeats: false) { _ in
+      // abortModal stops runModal and returns NSApplication.ModalResponse.abort
+      NSApp.abortModal()
+    }
+    RunLoop.main.add(timer, forMode: .common)
+    dismissTimer = timer
+
+    let response = alert.runModal()
+    timer.invalidate()
+    dismissTimer = nil
+
+    if response == .alertFirstButtonReturn {
+      openActivityMonitor()
+    }
+    NSApp.terminate(nil)
+  }
+
+  private func composeBody() -> String {
+    var lines: [String] = []
+    if !args.alertBody.isEmpty { lines.append(args.alertBody) }
+    var ctx: [String] = []
+    if let z = args.zone, !z.isEmpty { ctx.append("zone \(z)") }
+    if let f = args.freePct { ctx.append("free \(f)%") }
+    if let s = args.swapMib { ctx.append("swap \(s) MiB") }
+    if !ctx.isEmpty {
+      lines.append(ctx.joined(separator: " · "))
+    }
+    return lines.joined(separator: "\n")
+  }
+
+  private func alertStyle(for kind: String?) -> NSAlert.Style {
+    switch kind {
+    case "red_pressure": return .critical
+    case "warn_pressure", "swap_in_use": return .warning
+    default: return .informational
+    }
+  }
+
+  private func buildProcessTable() -> NSView {
+    let processes = ProcessLister.topByRSS(limit: 8)
+    let stack = NSStackView()
+    stack.orientation = .vertical
+    stack.alignment = .leading
+    stack.spacing = 3
+
+    let header = NSTextField(labelWithString: "Top processes by memory (RSS):")
+    header.font = .boldSystemFont(ofSize: 11)
+    stack.addArrangedSubview(header)
+
+    if processes.isEmpty {
+      let none = NSTextField(labelWithString: "(could not enumerate processes)")
+      none.font = .systemFont(ofSize: 11)
+      none.textColor = .secondaryLabelColor
+      stack.addArrangedSubview(none)
+    } else {
+      let mono = NSFont.monospacedSystemFont(ofSize: 11, weight: .regular)
+      let columnHeader = NSTextField(labelWithString: "   PID    RSS  Process")
+      columnHeader.font = mono
+      columnHeader.textColor = .secondaryLabelColor
+      stack.addArrangedSubview(columnHeader)
+      for p in processes {
+        let row = NSTextField(labelWithString:
+          String(format: "%6d  %4d MiB  %@", p.pid, p.rssMib, p.command))
+        row.font = mono
+        stack.addArrangedSubview(row)
+      }
+    }
+
+    let advisory = NSTextField(labelWithString:
+      "Use Activity Monitor to inspect or quit a process.")
+    advisory.font = .systemFont(ofSize: 10)
+    advisory.textColor = .secondaryLabelColor
+    stack.addArrangedSubview(advisory)
+
+    let size = stack.fittingSize
+    stack.frame = NSRect(x: 0, y: 0, width: max(size.width, 460), height: size.height)
+    return stack
+  }
+
+  private func openActivityMonitor() {
+    let candidates = [
+      "/System/Applications/Utilities/Activity Monitor.app",
+      "/Applications/Utilities/Activity Monitor.app"
+    ]
+    for path in candidates {
+      let url = URL(fileURLWithPath: path)
+      if FileManager.default.fileExists(atPath: path) {
+        NSWorkspace.shared.open(url)
+        return
+      }
+    }
   }
 }
