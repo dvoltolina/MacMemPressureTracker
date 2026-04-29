@@ -28,8 +28,11 @@ _config::allowed_key() {
   case "$1" in
     MPM_INTERVAL_SECONDS | \
       MPM_RED_COOLDOWN_SECONDS | \
+      MPM_WARN_ALERTS_ENABLED | \
+      MPM_WARN_COOLDOWN_SECONDS | \
       MPM_SWAP_COOLDOWN_SECONDS | \
       MPM_SWAP_THRESHOLD_MIB | \
+      MPM_SWAP_GROWTH_MIB | \
       MPM_NOTIFICATION_BACKEND | \
       MPM_NOTIFICATION_SOUND | \
       MPM_LOG_PATH | \
@@ -170,13 +173,23 @@ _config::require_safe_file_path() {
 config::validate() {
   _config::require_positive_uint MPM_INTERVAL_SECONDS "${MPM_INTERVAL_SECONDS:-}" || return 1
   _config::require_uint MPM_RED_COOLDOWN_SECONDS "${MPM_RED_COOLDOWN_SECONDS:-}" || return 1
+  _config::require_uint MPM_WARN_COOLDOWN_SECONDS "${MPM_WARN_COOLDOWN_SECONDS:-}" || return 1
   _config::require_uint MPM_SWAP_COOLDOWN_SECONDS "${MPM_SWAP_COOLDOWN_SECONDS:-}" || return 1
   _config::require_uint MPM_SWAP_THRESHOLD_MIB "${MPM_SWAP_THRESHOLD_MIB:-}" || return 1
+  _config::require_uint MPM_SWAP_GROWTH_MIB "${MPM_SWAP_GROWTH_MIB:-}" || return 1
+
+  case "${MPM_WARN_ALERTS_ENABLED:-1}" in
+    0 | 1) ;;
+    *)
+      _config::fail "MPM_WARN_ALERTS_ENABLED must be 0 or 1"
+      return 1
+      ;;
+  esac
 
   case "${MPM_NOTIFICATION_BACKEND:-}" in
-    osascript | terminal-notifier | stderr) ;;
+    popup | osascript | terminal-notifier | stderr) ;;
     *)
-      _config::fail "MPM_NOTIFICATION_BACKEND must be osascript, terminal-notifier, or stderr"
+      _config::fail "MPM_NOTIFICATION_BACKEND must be popup, osascript, terminal-notifier, or stderr"
       return 1
       ;;
   esac

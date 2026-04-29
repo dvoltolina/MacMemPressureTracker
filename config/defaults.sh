@@ -12,14 +12,27 @@
 # Cooldown before another red-zone notification fires (seconds).
 : "${MPM_RED_COOLDOWN_SECONDS:=600}"
 
+# Whether warn-zone notifications fire (1 = on, 0 = off).
+: "${MPM_WARN_ALERTS_ENABLED:=1}"
+
+# Cooldown before another warn-zone notification fires (seconds).
+: "${MPM_WARN_COOLDOWN_SECONDS:=1800}"
+
 # Cooldown before another swap-in-use notification fires (seconds).
 : "${MPM_SWAP_COOLDOWN_SECONDS:=900}"
 
 # Swap usage threshold to consider "in use" (MiB).
 : "${MPM_SWAP_THRESHOLD_MIB:=64}"
 
-# Notification backend: "osascript" (default) or "terminal-notifier".
-: "${MPM_NOTIFICATION_BACKEND:=osascript}"
+# Re-fire a swap notification when current swap exceeds the last-alerted
+# level by this many MiB. Default 1 GiB.
+: "${MPM_SWAP_GROWTH_MIB:=1024}"
+
+# Notification backend: "popup" (default — centered window via the
+# dashboard app), "osascript" (banner), "terminal-notifier", or "stderr"
+# (test). The popup backend falls back to osascript if the app bundle is
+# missing.
+: "${MPM_NOTIFICATION_BACKEND:=popup}"
 
 # Optional system sound name (empty = silent).
 : "${MPM_NOTIFICATION_SOUND:=}"
