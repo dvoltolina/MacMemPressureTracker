@@ -36,6 +36,10 @@ Format conventions:
 - `fix(check):` defensively default `prev_alerted` to 0 after capturing from `state::swap_alerted_mib` so a future refactor that lets the helper return empty cannot abort the tick under `set -u`.
 - `docs:` record audit findings, fixes, and outstanding follow-ups (stale bats suite needs rewriting to schema-2 contract; popup silent-failure detection deferred).
 
+### Feature: dashboard heartbeat
+
+- `feat(app):` dashboard now shows a "Last sample Ns ago" indicator that updates every second, parsed from the most recent log entry's `ts` field. Idle copy is "Waiting for first sample..."; the label turns red after 150 s without a fresh sample so a stalled `launchd` agent is visible without watching the chart. Addresses REPO_STATUS follow-up #12.
+
 ### Fixes
 
 - `fix(app):` add explicit `static func main()` so the dashboard's AppKit run loop actually starts. Without it, `@main` on a bare `NSApplicationDelegate` synthesizes a no-op entry point, `applicationDidFinishLaunching` never fires, and the window never appears (the user reported "no available windows").

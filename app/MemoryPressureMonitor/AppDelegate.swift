@@ -19,6 +19,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
   private var window: NSWindow!
   private let statusLabel = NSTextField(labelWithString: "Checking status...")
+  private let heartbeatLabel = NSTextField(labelWithString: "")
   private let detailsView = NSTextView()
   private let chartView = PressureChartView()
   private let refreshButton = NSButton(title: "Refresh", target: nil, action: nil)
@@ -28,6 +29,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   private let revealLogButton = NSButton(title: "Reveal Log", target: nil, action: nil)
   private var currentLogPath: String?
   private var chartTimer: Timer?
+  private var heartbeatTimer: Timer?
+  private var lastSampleAt: Date?
 
   private lazy var repoRoot: URL = {
     if let path = Bundle.main.object(forInfoDictionaryKey: "MPMRepoRoot") as? String, !path.isEmpty {
@@ -46,6 +49,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     configureWindow()
     refreshStatus()
     startChartTimer()
+    startHeartbeatTimer()
   }
 
   private func startChartTimer() {
@@ -55,6 +59,36 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
     RunLoop.main.add(timer, forMode: .common)
     chartTimer = timer
+  }
+
+  private func startHeartbeatTimer() {
+    heartbeatTimer?.invalidate()
+    let timer = Timer(timeInterval: 1.0, repeats: true) { [weak self] _ in
+      self?.updateHeartbeat()
+    }
+    RunLoop.main.add(timer, forMode: .common)
+    heartbeatTimer = timer
+    updateHeartbeat()
+  }
+
+  private func updateHeartbeat() {
+    guard let last = lastSampleAt else {
+      heartbeatLabel.stringValue = "Waiting for first sample..."
+      heartbeatLabel.textColor = .secondaryLabelColor
+      return
+    }
+    let elapsed = Int(Date().timeIntervalSince(last))
+    let staleThreshold = 150
+    let formatted: String
+    if elapsed < 60 {
+      formatted = "Last sample \(elapsed)s ago"
+    } else {
+      let mins = elapsed / 60
+      let secs = elapsed % 60
+      formatted = "Last sample \(mins)m \(secs)s ago"
+    }
+    heartbeatLabel.stringValue = formatted
+    heartbeatLabel.textColor = elapsed > staleThreshold ? .systemRed : .secondaryLabelColor
   }
 
   private func refreshChart() {
@@ -112,6 +146,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     statusLabel.font = .systemFont(ofSize: 14, weight: .medium)
     statusLabel.textColor = .secondaryLabelColor
 
+    heartbeatLabel.font = .monospacedSystemFont(ofSize: 11, weight: .regular)
+    heartbeatLabel.textColor = .secondaryLabelColor
+
     let buttonRow = NSStackView()
     buttonRow.orientation = .horizontal
     buttonRow.alignment = .centerY
@@ -147,6 +184,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     root.addArrangedSubview(title)
     root.addArrangedSubview(statusLabel)
+    root.addArrangedSubview(heartbeatLabel)
     root.addArrangedSubview(buttonRow)
     root.addArrangedSubview(chartView)
     root.addArrangedSubview(scroll)
@@ -285,6 +323,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let lastLaunchdStderr = json["last_launchd_stderr"] as? String ?? ""
 
     currentLogPath = logPath
+    lastSampleAt = parseSampleTimestamp(from: lastSample)
+    updateHeartbeat()
     refreshChart()
 
     statusLabel.stringValue = healthLabel
@@ -335,6 +375,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     for button in [refreshButton, installButton, uninstallButton, testButton, revealLogButton] {
       button.isEnabled = enabled
     }
+  }
+
+  private func parseSampleTimestamp(from line: String) -> Date? {
+    guard !line.isEmpty,
+      let data = line.data(using: .utf8),
+      let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+      let ts = json["ts"] as? String
+    else { return nil }
+    let formatter = ISO8601DateFormatter()
+    formatter.formatOptions = [.withInternetDateTime]
+    return formatter.date(from: ts)
   }
 
   private func runRepoScript(
