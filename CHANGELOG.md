@@ -24,6 +24,18 @@ Format conventions:
 - `feat(app):` `--alert` mode in the dashboard binary. Argv contract: `--alert <kind> --title <text> --body <text> [--zone <z>] [--free-pct <n>] [--swap-mib <n>]`. Shows a centered, floating, frontmost `NSAlert` with a top-8-by-RSS process table and two buttons: "Open Activity Monitor" and "Dismiss". Auto-dismisses after 90 s. Advisory only — does not kill processes.
 - `docs:` align README, ARCHITECTURE, and REPO_STATUS with active-alerts. Add new config table to README.
 
+### Audit Fixes
+
+- `fix(state):` flatten newlines in `_state::extract_int` so a pretty-printed schema-2 state file (one field per line, hand-edited or migrated by future tooling) is read correctly. Without the flatten, `state::swap_alerted_mib` returned 0 on multi-line files and the next tick fired a spurious "first observed" swap alert.
+- `fix(state):` defensively clamp `swap_alerted_mib` to 12 digits on read and write. A corrupt or interrupted-write value larger than that would either truncate or trip `set -Eeuo pipefail` in the consumer's arithmetic and silently abort future ticks.
+- `fix(notify):` skip launching a second popup when one from a prior tick is still visible (`pgrep` against the alert-mode argv pattern). The cooldown still starts so the suppression is bounded; the visible popup already conveys the situation.
+- `fix(notify):` remove the undocumented `MPM_POPUP_APP_BINARY` env override. It was an unvalidated trust input that would let any code that could set it route every alert through an attacker-chosen binary. The repo-relative resolution is the only path now.
+- `fix(app):` argv parser rejects values that begin with `--` so a caller dropping a flag's value (e.g. `--title --body hi`) cannot silently misalign the parse and disable alert mode.
+- `fix(app):` log and surface a fallback alert when Activity Monitor cannot be located at the standard `/System/Applications/Utilities` or `/Applications/Utilities` path, instead of silently no-op.
+- `fix(app):` strengthen the popup advisory copy from "Use Activity Monitor to inspect or quit a process." to "To free memory: open Activity Monitor and Quit the largest process you don't need."
+- `fix(check):` defensively default `prev_alerted` to 0 after capturing from `state::swap_alerted_mib` so a future refactor that lets the helper return empty cannot abort the tick under `set -u`.
+- `docs:` record audit findings, fixes, and outstanding follow-ups (stale bats suite needs rewriting to schema-2 contract; popup silent-failure detection deferred).
+
 ### Fixes
 
 - `fix(app):` add explicit `static func main()` so the dashboard's AppKit run loop actually starts. Without it, `@main` on a bare `NSApplicationDelegate` synthesizes a no-op entry point, `applicationDidFinishLaunching` never fires, and the window never appears (the user reported "no available windows").
