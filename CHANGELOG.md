@@ -11,6 +11,10 @@ Format conventions:
 
 ## 2026-04-29
 
+### Feature: dashboard
+
+- `feat(app):` live pressure chart in the dashboard window. Reads the JSONL log directly (last 256 KB tail), filters `sample_taken` events, and draws the last 240 samples as a blue line/area with per-sample dots colored by zone (green=normal, orange=warn, red=critical). HH:MM tick labels at the X-edges, 0/25/50/75/100% gridlines on the Y-axis, and a top-right legend showing the most recent free %, zone, and swap MiB. Auto-refreshes every 15 s while the window is open. Window default size bumped to 680×600 with min 560×520 to fit the chart.
+
 ### Fixes
 
 - `fix(app):` add explicit `static func main()` so the dashboard's AppKit run loop actually starts. Without it, `@main` on a bare `NSApplicationDelegate` synthesizes a no-op entry point, `applicationDidFinishLaunching` never fires, and the window never appears (the user reported "no available windows").

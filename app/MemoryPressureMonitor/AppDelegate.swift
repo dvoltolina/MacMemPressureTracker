@@ -13,12 +13,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   private var window: NSWindow!
   private let statusLabel = NSTextField(labelWithString: "Checking status...")
   private let detailsView = NSTextView()
+  private let chartView = PressureChartView()
   private let refreshButton = NSButton(title: "Refresh", target: nil, action: nil)
   private let installButton = NSButton(title: "Install / Reload", target: nil, action: nil)
   private let uninstallButton = NSButton(title: "Uninstall", target: nil, action: nil)
   private let testButton = NSButton(title: "Test Notification", target: nil, action: nil)
   private let revealLogButton = NSButton(title: "Reveal Log", target: nil, action: nil)
   private var currentLogPath: String?
+  private var chartTimer: Timer?
 
   private lazy var repoRoot: URL = {
     if let path = Bundle.main.object(forInfoDictionaryKey: "MPMRepoRoot") as? String, !path.isEmpty {
@@ -36,6 +38,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     configureMenu()
     configureWindow()
     refreshStatus()
+    startChartTimer()
+  }
+
+  private func startChartTimer() {
+    chartTimer?.invalidate()
+    let timer = Timer(timeInterval: 15.0, repeats: true) { [weak self] _ in
+      self?.refreshChart()
+    }
+    RunLoop.main.add(timer, forMode: .common)
+    chartTimer = timer
+  }
+
+  private func refreshChart() {
+    guard let path = currentLogPath, !path.isEmpty else { return }
+    DispatchQueue.global(qos: .utility).async { [weak self] in
+      let samples = PressureLogReader.recentSamples(logPath: path, maxCount: 240)
+      DispatchQueue.main.async {
+        self?.chartView.setSamples(samples)
+      }
+    }
   }
 
   func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
@@ -67,7 +89,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     )
     window.title = "Memory Pressure Monitor"
     window.center()
-    window.minSize = NSSize(width: 520, height: 380)
+    window.minSize = NSSize(width: 560, height: 520)
+    window.setContentSize(NSSize(width: 680, height: 600))
 
     let root = NSStackView()
     root.orientation = .vertical
@@ -113,9 +136,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     scroll.documentView = detailsView
     scroll.translatesAutoresizingMaskIntoConstraints = false
 
+    chartView.translatesAutoresizingMaskIntoConstraints = false
+
     root.addArrangedSubview(title)
     root.addArrangedSubview(statusLabel)
     root.addArrangedSubview(buttonRow)
+    root.addArrangedSubview(chartView)
     root.addArrangedSubview(scroll)
 
     window.contentView = NSView()
@@ -126,8 +152,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       root.trailingAnchor.constraint(equalTo: window.contentView!.trailingAnchor),
       root.topAnchor.constraint(equalTo: window.contentView!.topAnchor),
       root.bottomAnchor.constraint(equalTo: window.contentView!.bottomAnchor),
+      chartView.widthAnchor.constraint(equalTo: root.widthAnchor, constant: -40),
+      chartView.heightAnchor.constraint(equalToConstant: 160),
       scroll.widthAnchor.constraint(equalTo: root.widthAnchor, constant: -40),
-      scroll.heightAnchor.constraint(greaterThanOrEqualToConstant: 230)
+      scroll.heightAnchor.constraint(greaterThanOrEqualToConstant: 200)
     ])
 
     window.makeKeyAndOrderFront(nil)
@@ -250,6 +278,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let lastLaunchdStderr = json["last_launchd_stderr"] as? String ?? ""
 
     currentLogPath = logPath
+    refreshChart()
 
     statusLabel.stringValue = healthLabel
     if health == "running" {
@@ -452,4 +481,221 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 struct CommandResult {
   let status: Int32
   let output: String
+}
+
+struct PressureSample {
+  let timestamp: Date
+  let freePct: Double
+  let zone: String
+  let swapMiB: Double
+}
+
+enum PressureLogReader {
+  // Reads the JSONL log tail and returns up to `maxCount` of the most recent
+  // `sample_taken` events, oldest-first.
+  static func recentSamples(logPath: String, maxCount: Int) -> [PressureSample] {
+    guard let handle = FileHandle(forReadingAtPath: logPath) else { return [] }
+    defer { try? handle.close() }
+
+    let readBudget: UInt64 = 256 * 1024
+    let totalSize = (try? handle.seekToEnd()) ?? 0
+    let offset = totalSize > readBudget ? totalSize - readBudget : 0
+    do {
+      try handle.seek(toOffset: offset)
+    } catch {
+      return []
+    }
+    let data = handle.readDataToEndOfFile()
+    guard let text = String(data: data, encoding: .utf8) else { return [] }
+
+    let formatter = ISO8601DateFormatter()
+    formatter.formatOptions = [.withInternetDateTime]
+
+    var lines = text.split(separator: "\n", omittingEmptySubsequences: true).map(String.init)
+    if offset > 0, !lines.isEmpty {
+      lines.removeFirst()
+    }
+
+    var samples: [PressureSample] = []
+    for line in lines {
+      guard
+        let lineData = line.data(using: .utf8),
+        let json = try? JSONSerialization.jsonObject(with: lineData) as? [String: Any]
+      else { continue }
+      guard (json["event"] as? String) == "sample_taken" else { continue }
+
+      let ts = (json["ts"] as? String).flatMap(formatter.date(from:)) ?? Date()
+      let freePct: Double
+      if let n = json["free_pct"] as? NSNumber { freePct = n.doubleValue }
+      else if let s = json["free_pct"] as? String, let n = Double(s) { freePct = n }
+      else { continue }
+      let zone = (json["zone"] as? String) ?? "unknown"
+      let swap: Double
+      if let n = json["swap_used_mib"] as? NSNumber { swap = n.doubleValue }
+      else { swap = 0 }
+
+      samples.append(PressureSample(timestamp: ts, freePct: freePct, zone: zone, swapMiB: swap))
+    }
+
+    if samples.count > maxCount {
+      samples = Array(samples.suffix(maxCount))
+    }
+    return samples
+  }
+}
+
+final class PressureChartView: NSView {
+  private var samples: [PressureSample] = []
+  private let placeholder = NSTextField(labelWithString: "Waiting for samples...")
+
+  override init(frame frameRect: NSRect) {
+    super.init(frame: frameRect)
+    wantsLayer = true
+    layer?.backgroundColor = NSColor.textBackgroundColor.cgColor
+    layer?.cornerRadius = 6
+    layer?.borderWidth = 1
+    layer?.borderColor = NSColor.separatorColor.cgColor
+
+    placeholder.translatesAutoresizingMaskIntoConstraints = false
+    placeholder.textColor = .secondaryLabelColor
+    addSubview(placeholder)
+    NSLayoutConstraint.activate([
+      placeholder.centerXAnchor.constraint(equalTo: centerXAnchor),
+      placeholder.centerYAnchor.constraint(equalTo: centerYAnchor)
+    ])
+  }
+
+  required init?(coder: NSCoder) { fatalError("not used") }
+
+  func setSamples(_ samples: [PressureSample]) {
+    self.samples = samples
+    placeholder.isHidden = !samples.isEmpty
+    needsDisplay = true
+  }
+
+  override var wantsUpdateLayer: Bool { false }
+
+  override func draw(_ dirtyRect: NSRect) {
+    super.draw(dirtyRect)
+    guard samples.count >= 2 else { return }
+    guard let ctx = NSGraphicsContext.current?.cgContext else { return }
+
+    let inset = NSEdgeInsets(top: 14, left: 36, bottom: 22, right: 12)
+    let plot = NSRect(
+      x: bounds.minX + inset.left,
+      y: bounds.minY + inset.bottom,
+      width: bounds.width - inset.left - inset.right,
+      height: bounds.height - inset.top - inset.bottom
+    )
+    guard plot.width > 4, plot.height > 4 else { return }
+
+    drawAxes(in: plot, ctx: ctx)
+
+    let count = samples.count
+    let stepX = plot.width / CGFloat(max(count - 1, 1))
+    func point(for index: Int) -> CGPoint {
+      let s = samples[index]
+      let clamped = max(0, min(100, s.freePct))
+      let x = plot.minX + CGFloat(index) * stepX
+      let y = plot.minY + plot.height * CGFloat(clamped / 100.0)
+      return CGPoint(x: x, y: y)
+    }
+
+    // Filled area under the line.
+    let areaPath = NSBezierPath()
+    areaPath.move(to: CGPoint(x: plot.minX, y: plot.minY))
+    for i in 0..<count {
+      let p = point(for: i)
+      if i == 0 {
+        areaPath.line(to: CGPoint(x: p.x, y: plot.minY))
+      }
+      areaPath.line(to: p)
+    }
+    areaPath.line(to: CGPoint(x: plot.maxX, y: plot.minY))
+    areaPath.close()
+    NSColor.systemBlue.withAlphaComponent(0.12).setFill()
+    areaPath.fill()
+
+    // Line.
+    let linePath = NSBezierPath()
+    linePath.lineWidth = 1.5
+    linePath.lineJoinStyle = .round
+    linePath.move(to: point(for: 0))
+    for i in 1..<count {
+      linePath.line(to: point(for: i))
+    }
+    NSColor.systemBlue.withAlphaComponent(0.85).setStroke()
+    linePath.stroke()
+
+    // Per-sample dots colored by zone.
+    for i in 0..<count {
+      let p = point(for: i)
+      let radius: CGFloat = 2.5
+      let dot = NSBezierPath(ovalIn: NSRect(
+        x: p.x - radius, y: p.y - radius,
+        width: radius * 2, height: radius * 2
+      ))
+      zoneColor(samples[i].zone).setFill()
+      dot.fill()
+    }
+
+    drawLegend(in: bounds, ctx: ctx)
+  }
+
+  private func zoneColor(_ zone: String) -> NSColor {
+    switch zone {
+    case "normal": return .systemGreen
+    case "warn": return .systemOrange
+    case "critical": return .systemRed
+    default: return .systemGray
+    }
+  }
+
+  private func drawAxes(in plot: NSRect, ctx: CGContext) {
+    let gridColor = NSColor.separatorColor.withAlphaComponent(0.5)
+    let labelAttrs: [NSAttributedString.Key: Any] = [
+      .font: NSFont.systemFont(ofSize: 9),
+      .foregroundColor: NSColor.secondaryLabelColor
+    ]
+
+    for pct in stride(from: 0, through: 100, by: 25) {
+      let y = plot.minY + plot.height * CGFloat(Double(pct) / 100.0)
+      let path = NSBezierPath()
+      path.move(to: CGPoint(x: plot.minX, y: y))
+      path.line(to: CGPoint(x: plot.maxX, y: y))
+      gridColor.setStroke()
+      path.lineWidth = 0.5
+      path.stroke()
+      let label = NSAttributedString(string: "\(pct)%", attributes: labelAttrs)
+      let size = label.size()
+      label.draw(at: CGPoint(x: plot.minX - size.width - 4, y: y - size.height / 2))
+    }
+
+    let oldest = samples.first?.timestamp
+    let newest = samples.last?.timestamp
+    let formatter = DateFormatter()
+    formatter.dateFormat = "HH:mm"
+    if let oldest = oldest {
+      let s = NSAttributedString(string: formatter.string(from: oldest), attributes: labelAttrs)
+      s.draw(at: CGPoint(x: plot.minX, y: plot.minY - s.size().height - 4))
+    }
+    if let newest = newest {
+      let s = NSAttributedString(string: formatter.string(from: newest), attributes: labelAttrs)
+      let sz = s.size()
+      s.draw(at: CGPoint(x: plot.maxX - sz.width, y: plot.minY - sz.height - 4))
+    }
+  }
+
+  private func drawLegend(in rect: NSRect, ctx: CGContext) {
+    guard let last = samples.last else { return }
+    let attrs: [NSAttributedString.Key: Any] = [
+      .font: NSFont.systemFont(ofSize: 10, weight: .medium),
+      .foregroundColor: NSColor.labelColor
+    ]
+    let pctText = String(format: "free %.0f%% • zone %@ • swap %.0f MiB",
+      last.freePct, last.zone, last.swapMiB)
+    let s = NSAttributedString(string: pctText, attributes: attrs)
+    let sz = s.size()
+    s.draw(at: CGPoint(x: rect.maxX - sz.width - 10, y: rect.maxY - sz.height - 4))
+  }
 }
