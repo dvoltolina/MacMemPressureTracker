@@ -152,6 +152,12 @@ pressure::is_red() {
   [ "${zone}" = "red" ]
 }
 
+pressure::is_warn() {
+  local zone
+  zone="$(_pressure::field "$1" zone)"
+  [ "${zone}" = "warn" ]
+}
+
 pressure::swap_in_use() {
   local used threshold
   used="$(_pressure::field "$1" swap_used_mib)"
