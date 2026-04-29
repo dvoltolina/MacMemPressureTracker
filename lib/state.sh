@@ -3,18 +3,32 @@
 # Sourced, never executed.
 #
 # Public API:
-#   state::path                       -> prints the resolved state file path
-#   state::should_alert <kind>        -> exit 0 if cooldown elapsed, 1 if not
-#   state::record_alert <kind>        -> writes a fresh timestamp for <kind>
-#   state::swap_active                -> exit 0 if swap was active on last tick
-#   state::set_swap_active <true|false>
-#   state::reset                      -> deletes the state file
+#   state::path                                      -> resolved state file path
+#   state::should_alert <kind>                       -> exit 0 if cooldown elapsed
+#   state::record_alert <kind> [<swap_used_mib>]     -> writes a fresh timestamp
+#   state::swap_alerted_mib                          -> prints the swap level (MiB)
+#                                                       at which the last
+#                                                       swap_in_use alert fired
+#                                                       (0 if never)
+#   state::set_swap_alerted_mib <int>                -> overwrites the swap
+#                                                       high-water field
+#   state::reset                                     -> deletes the state file
 #
-# kind ∈ {red_pressure, swap_in_use}
-# Cooldowns from MPM_RED_COOLDOWN_SECONDS / MPM_SWAP_COOLDOWN_SECONDS.
+# kind ∈ {red_pressure, warn_pressure, swap_in_use}
+# Cooldowns from MPM_RED_COOLDOWN_SECONDS / MPM_WARN_COOLDOWN_SECONDS /
+# MPM_SWAP_COOLDOWN_SECONDS.
 #
-# State file format (schema=1):
-#   {"schema":1,"last_alert":{"red_pressure":"<iso8601>|null","swap_in_use":"<iso8601>|null"},"swap_active":false}
+# State file format (schema=2):
+#   {"schema":2,
+#    "last_alert":{"red_pressure":"<iso>|null",
+#                  "warn_pressure":"<iso>|null",
+#                  "swap_in_use":"<iso>|null"},
+#    "swap_alerted_mib":<int>}
+#
+# Schema 1 (legacy) is read transparently: a swap_active=true v1 file is
+# treated as swap_alerted_mib=MPM_SWAP_THRESHOLD_MIB so the new growth
+# decision starts from a sensible baseline. The next write rewrites the
+# file as schema 2.
 #
 # Honors:
 #   MPM_STATE_PATH   — full path override
@@ -56,7 +70,6 @@ _state::iso_now() {
 # Strips the colon from the offset because BSD date -j -f only accepts +0700, not +07:00.
 _state::iso_to_epoch() {
   local ts="$1"
-  # Strip the colon in the offset, if present.
   ts="$(printf '%s' "${ts}" | sed 's/\([+-][0-9][0-9]\):\([0-9][0-9]\)$/\1\2/')"
   date -j -f "%Y-%m-%dT%H:%M:%S%z" "${ts}" '+%s' 2> /dev/null
 }
@@ -65,25 +78,27 @@ _state::iso_to_epoch() {
 _state::cooldown_for() {
   case "$1" in
     red_pressure) printf '%s' "${MPM_RED_COOLDOWN_SECONDS:-600}" ;;
+    warn_pressure) printf '%s' "${MPM_WARN_COOLDOWN_SECONDS:-1800}" ;;
     swap_in_use) printf '%s' "${MPM_SWAP_COOLDOWN_SECONDS:-900}" ;;
     *) return 2 ;;
   esac
 }
 
-# _state::extract <kind>: reads the state file and prints the stored ISO ts
-# for <kind>, or empty if missing / null / corrupt.
-#
-# Matches "<kind>": "..." or "<kind>": null with optional JSON whitespace.
-# Because kind values are a closed set ({red_pressure, swap_in_use}) and
-# ISO 8601 timestamps cannot contain `"`, this is unambiguous without a
-# real JSON parser.
-_state::extract() {
-  local kind="$1"
+# _state::raw: prints the raw state file contents, or empty if missing.
+_state::raw() {
   local path
   path="$(state::path)"
   [ -f "${path}" ] || return 0
-  local raw
-  raw="$(cat "${path}" 2> /dev/null)" || return 0
+  cat "${path}" 2> /dev/null || return 0
+}
+
+# _state::extract <kind>: prints the stored ISO timestamp for <kind> or empty.
+# kind values are a closed set and ISO 8601 timestamps cannot contain ", so
+# regex matching is unambiguous without a real JSON parser.
+_state::extract() {
+  local kind="$1" raw
+  raw="$(_state::raw)"
+  [ -n "${raw}" ] || return 0
   printf '%s' "${raw}" | tr '\n\r\t' '   ' | awk -v k="${kind}" '
     {
       pat = "\"" k "\"[[:space:]]*:[[:space:]]*(null|\"[^\"]*\")";
@@ -98,10 +113,9 @@ _state::extract() {
 }
 
 _state::has_key() {
-  local key="$1" path raw
-  path="$(state::path)"
-  [ -f "${path}" ] || return 1
-  raw="$(cat "${path}" 2> /dev/null)" || return 1
+  local key="$1" raw
+  raw="$(_state::raw)"
+  [ -n "${raw}" ] || return 1
   printf '%s' "${raw}" | tr '\n\r\t' '   ' | awk -v k="${key}" '
     {
       pat = "\"" k "\"[[:space:]]*:";
@@ -111,42 +125,67 @@ _state::has_key() {
   '
 }
 
-# _state::extract_swap_active: prints true/false if present, else empty.
-_state::extract_swap_active() {
-  local path raw
-  path="$(state::path)"
-  [ -f "${path}" ] || return 0
-  raw="$(cat "${path}" 2> /dev/null)" || return 0
+# _state::extract_int <key>: prints integer value of <key>, or empty.
+_state::extract_int() {
+  local key="$1" raw
+  raw="$(_state::raw)"
+  [ -n "${raw}" ] || return 0
+  printf '%s' "${raw}" | awk -v k="${key}" '
+    {
+      pat = "\"" k "\"[[:space:]]*:[[:space:]]*-?[0-9]+";
+      if (!match($0, pat)) exit;
+      rest = substr($0, RSTART, RLENGTH);
+      sub(/^[^:]*:[[:space:]]*/, "", rest);
+      print rest;
+    }
+  '
+}
+
+_state::extract_swap_active_legacy() {
+  local raw
+  raw="$(_state::raw)"
+  [ -n "${raw}" ] || return 0
   printf '%s' "${raw}" | awk '
     /"swap_active"[[:space:]]*:[[:space:]]*true/ { print "true"; exit }
     /"swap_active"[[:space:]]*:[[:space:]]*false/ { print "false"; exit }
   '
 }
 
-_state::current_swap_active_literal() {
-  local active last_swap
-  active="$(_state::extract_swap_active)"
-  case "${active}" in
-    true | false)
-      printf '%s' "${active}"
+# _state::current_swap_alerted_mib: prints the current high-water mark, or 0.
+# Migrates schema=1 (swap_active boolean) on read.
+_state::current_swap_alerted_mib() {
+  local v legacy
+  v="$(_state::extract_int swap_alerted_mib)"
+  if [ -n "${v}" ]; then
+    printf '%s' "${v}"
+    return
+  fi
+
+  legacy="$(_state::extract_swap_active_legacy)"
+  case "${legacy}" in
+    true)
+      printf '%s' "${MPM_SWAP_THRESHOLD_MIB:-64}"
+      return
+      ;;
+    false)
+      printf '0'
       return
       ;;
   esac
 
-  # Backward-compatible inference for v1 state files that predate
-  # swap_active: a stored swap alert means the last known state was active.
+  # Backward-compatible inference for state files that predate both fields.
+  local last_swap
   last_swap="$(_state::extract swap_in_use)"
   if [ -n "${last_swap}" ]; then
-    printf 'true'
+    printf '%s' "${MPM_SWAP_THRESHOLD_MIB:-64}"
   else
-    printf 'false'
+    printf '0'
   fi
 }
 
-# _state::write_atomic: writes both kinds (preserving the other when only
-# one is being updated). Atomic via temp file + mv.
+# _state::write_atomic: writes all state in one shot. Atomic via temp file + mv.
 _state::write_atomic() {
-  local red="$1" swap="$2" swap_active="$3"
+  local red="$1" warn="$2" swap="$3" swap_alerted_mib="$4"
   local path tmp dir target_existed
   path="$(state::path)"
   dir="$(dirname "${path}")"
@@ -164,24 +203,18 @@ _state::write_atomic() {
   target_existed=0
   [ -e "${path}" ] && target_existed=1
   tmp="$(mktemp "${dir}/.last_alert.XXXXXX")"
-  local red_field swap_field
-  if [ -z "${red}" ]; then
-    red_field='null'
-  else
-    red_field="\"${red}\""
-  fi
-  if [ -z "${swap}" ]; then
-    swap_field='null'
-  else
-    swap_field="\"${swap}\""
-  fi
-  case "${swap_active}" in
-    true | false) ;;
-    *) swap_active='false' ;;
+
+  local red_field warn_field swap_field
+  if [ -z "${red}" ]; then red_field='null'; else red_field="\"${red}\""; fi
+  if [ -z "${warn}" ]; then warn_field='null'; else warn_field="\"${warn}\""; fi
+  if [ -z "${swap}" ]; then swap_field='null'; else swap_field="\"${swap}\""; fi
+
+  case "${swap_alerted_mib}" in
+    '' | *[!0-9]*) swap_alerted_mib='0' ;;
   esac
 
-  printf '{"schema":1,"last_alert":{"red_pressure":%s,"swap_in_use":%s},"swap_active":%s}\n' \
-    "${red_field}" "${swap_field}" "${swap_active}" > "${tmp}"
+  printf '{"schema":2,"last_alert":{"red_pressure":%s,"warn_pressure":%s,"swap_in_use":%s},"swap_alerted_mib":%s}\n' \
+    "${red_field}" "${warn_field}" "${swap_field}" "${swap_alerted_mib}" > "${tmp}"
   mv -f "${tmp}" "${path}"
   if [ "${target_existed}" -eq 0 ]; then
     chmod 0644 "${path}" 2> /dev/null || true
@@ -193,9 +226,15 @@ state::should_alert() {
   local cooldown
   cooldown="$(_state::cooldown_for "${kind}")" || return 2
 
-  local path
+  local raw path
+  raw="$(_state::raw)"
   path="$(state::path)"
-  if [ -f "${path}" ] && {
+
+  # If a state file exists but lacks an expected key, log it as corrupt and
+  # treat as "no prior alert" for safety. Both schema 1 and schema 2 expose
+  # red_pressure and swap_in_use; warn_pressure is schema 2 only and is
+  # tolerated as missing.
+  if [ -n "${raw}" ] && [ -f "${path}" ] && {
     ! grep -q '"schema"' "${path}" 2> /dev/null ||
       ! _state::has_key red_pressure ||
       ! _state::has_key swap_in_use
@@ -232,42 +271,49 @@ state::should_alert() {
 }
 
 state::record_alert() {
-  local kind="$1"
+  local kind="$1" swap_mib="${2:-}"
   local now_iso
   now_iso="$(_state::iso_now)"
 
-  local red swap swap_active
+  local red warn swap swap_alerted_mib
   red="$(_state::extract red_pressure)"
+  warn="$(_state::extract warn_pressure)"
   swap="$(_state::extract swap_in_use)"
-  swap_active="$(_state::current_swap_active_literal)"
+  swap_alerted_mib="$(_state::current_swap_alerted_mib)"
 
   case "${kind}" in
     red_pressure) red="${now_iso}" ;;
+    warn_pressure) warn="${now_iso}" ;;
     swap_in_use)
       swap="${now_iso}"
-      swap_active='true'
+      if [ -n "${swap_mib}" ]; then
+        case "${swap_mib}" in
+          '' | *[!0-9]*) ;;
+          *) swap_alerted_mib="${swap_mib}" ;;
+        esac
+      fi
       ;;
     *) return 2 ;;
   esac
 
-  _state::write_atomic "${red}" "${swap}" "${swap_active}"
+  _state::write_atomic "${red}" "${warn}" "${swap}" "${swap_alerted_mib}"
 }
 
-state::swap_active() {
-  [ "$(_state::current_swap_active_literal)" = "true" ]
+state::swap_alerted_mib() {
+  _state::current_swap_alerted_mib
 }
 
-state::set_swap_active() {
+state::set_swap_alerted_mib() {
   local desired="$1"
   case "${desired}" in
-    true | false) ;;
-    *) return 2 ;;
+    '' | *[!0-9]*) return 2 ;;
   esac
 
-  local red swap
+  local red warn swap
   red="$(_state::extract red_pressure)"
+  warn="$(_state::extract warn_pressure)"
   swap="$(_state::extract swap_in_use)"
-  _state::write_atomic "${red}" "${swap}" "${desired}"
+  _state::write_atomic "${red}" "${warn}" "${swap}" "${desired}"
 }
 
 state::reset() {
