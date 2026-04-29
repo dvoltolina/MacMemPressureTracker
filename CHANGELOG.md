@@ -40,6 +40,10 @@ Format conventions:
 
 - `feat(app):` dashboard now shows a "Last sample Ns ago" indicator that updates every second, parsed from the most recent log entry's `ts` field. Idle copy is "Waiting for first sample..."; the label turns red after 150 s without a fresh sample so a stalled `launchd` agent is visible without watching the chart. Addresses REPO_STATUS follow-up #12.
 
+### Tests
+
+- `test(state):` rewrite `tests/state_test.bats` to the schema-2 contract. New coverage: schema-1 → schema-2 read migration (with and without `swap_active`), schema-1 → schema-2 file rewrite on next `record_alert`, per-kind cooldown routing (`warn_pressure` distinct from `red_pressure` distinct from `swap_in_use`), `swap_alerted_mib` preservation across non-swap kinds, B1 audit regression (pretty-printed integer parse via newline flatten), S-2 audit regression (>12-digit width clamp on read), `set_swap_alerted_mib` rejecting non-integer input. 27 tests, all passing under `bats tests/state_test.bats`. Partial completion of REPO_STATUS follow-up #8; `check_memory_pressure_test.bats` and `notify_test.bats` still pending.
+
 ### Fixes
 
 - `fix(app):` add explicit `static func main()` so the dashboard's AppKit run loop actually starts. Without it, `@main` on a bare `NSApplicationDelegate` synthesizes a no-op entry point, `applicationDidFinishLaunching` never fires, and the window never appears (the user reported "no available windows").
