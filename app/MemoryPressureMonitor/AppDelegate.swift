@@ -720,9 +720,16 @@ struct AppArguments {
     var i = 1
     while i < argv.count {
       let key = argv[i]
-      if key.hasPrefix("--"), i + 1 < argv.count {
-        dict[key] = argv[i + 1]
-        i += 2
+      if key.hasPrefix("--") {
+        // Reject values that look like another flag — protects callers
+        // that drop a flag's value, which would otherwise silently
+        // misalign the parse and break alert mode.
+        if i + 1 < argv.count, !argv[i + 1].hasPrefix("--") {
+          dict[key] = argv[i + 1]
+          i += 2
+        } else {
+          i += 1
+        }
       } else {
         i += 1
       }
@@ -898,9 +905,9 @@ final class AlertController: NSObject, NSApplicationDelegate {
     }
 
     let advisory = NSTextField(labelWithString:
-      "Use Activity Monitor to inspect or quit a process.")
-    advisory.font = .systemFont(ofSize: 10)
-    advisory.textColor = .secondaryLabelColor
+      "To free memory: open Activity Monitor and Quit the largest process you don't need.")
+    advisory.font = .systemFont(ofSize: 11, weight: .medium)
+    advisory.textColor = .labelColor
     stack.addArrangedSubview(advisory)
 
     let size = stack.fittingSize
@@ -914,11 +921,16 @@ final class AlertController: NSObject, NSApplicationDelegate {
       "/Applications/Utilities/Activity Monitor.app"
     ]
     for path in candidates {
-      let url = URL(fileURLWithPath: path)
       if FileManager.default.fileExists(atPath: path) {
-        NSWorkspace.shared.open(url)
+        NSWorkspace.shared.open(URL(fileURLWithPath: path))
         return
       }
     }
+    NSLog("Memory Pressure Monitor: Activity Monitor not found at known paths")
+    let alert = NSAlert()
+    alert.messageText = "Activity Monitor not found"
+    alert.informativeText = "Could not locate Activity Monitor at the standard system or /Applications path."
+    alert.addButton(withTitle: "OK")
+    alert.runModal()
   }
 }
