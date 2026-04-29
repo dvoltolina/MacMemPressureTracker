@@ -248,9 +248,9 @@ state::should_alert() {
   # red_pressure and swap_in_use; warn_pressure is schema 2 only and is
   # tolerated as missing.
   if [ -n "${raw}" ] && [ -f "${path}" ] && {
-    ! grep -q '"schema"' "${path}" 2> /dev/null ||
-      ! _state::has_key red_pressure ||
-      ! _state::has_key swap_in_use
+    ! grep -q '"schema"' "${path}" 2> /dev/null \
+      || ! _state::has_key red_pressure \
+      || ! _state::has_key swap_in_use
   }; then
     if command -v log::warn > /dev/null 2>&1; then
       log::warn state_corrupted reason=missing_schema kind="${kind}"

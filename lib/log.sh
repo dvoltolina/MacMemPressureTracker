@@ -80,7 +80,10 @@ _log::emit() {
 
   local created=0
   if [ ! -e "${log_path}" ]; then
-    if (set -C; : > "${log_path}") 2> /dev/null; then
+    if (
+      set -C
+      : > "${log_path}"
+    ) 2> /dev/null; then
       created=1
     fi
   fi

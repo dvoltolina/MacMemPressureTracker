@@ -23,7 +23,7 @@ teardown() {
 }
 
 @test "install --dry-run honors strict config interval" {
-  cat > "${TMP}/config.sh" <<'CFG'
+  cat > "${TMP}/config.sh" << 'CFG'
 MPM_INTERVAL_SECONDS=45
 CFG
   export MPM_CONFIG_PATH="${TMP}/config.sh"
@@ -34,7 +34,7 @@ CFG
 }
 
 @test "install --help works when user config is invalid" {
-  cat > "${TMP}/bad-config.sh" <<'CFG'
+  cat > "${TMP}/bad-config.sh" << 'CFG'
 MPM_INTERVAL_SECONDS=not-a-number
 CFG
   export MPM_CONFIG_PATH="${TMP}/bad-config.sh"
@@ -45,7 +45,7 @@ CFG
 }
 
 @test "uninstall --help works when user config is invalid" {
-  cat > "${TMP}/bad-config.sh" <<'CFG'
+  cat > "${TMP}/bad-config.sh" << 'CFG'
 MPM_INTERVAL_SECONDS=not-a-number
 CFG
   export MPM_CONFIG_PATH="${TMP}/bad-config.sh"

@@ -19,7 +19,7 @@ LABEL="com.dominic.memory-pressure-monitor"
 PLIST_DEST="${HOME}/Library/LaunchAgents/${LABEL}.plist"
 
 usage() {
-  cat <<EOF
+  cat << EOF
 Usage: ${0##*/} [--purge]
 
 Stops and removes the ${LABEL} launchd agent.

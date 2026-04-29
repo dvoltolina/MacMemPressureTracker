@@ -23,7 +23,7 @@ PLIST_DEST="${HOME}/Library/LaunchAgents/${LABEL}.plist"
 LOG_DIR="${HOME}/Library/Logs"
 
 usage() {
-  cat <<EOF
+  cat << EOF
 Usage: ${0##*/} [--dry-run] [--force]
 
 Renders the launchd plist for ${LABEL} and bootstraps the agent.

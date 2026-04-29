@@ -13,7 +13,7 @@ teardown() {
 }
 
 @test "config::load accepts whitelisted KEY=value overrides" {
-  cat > "${HOME}/.config/memory-pressure-monitor/config.sh" <<'CFG'
+  cat > "${HOME}/.config/memory-pressure-monitor/config.sh" << 'CFG'
 # comment
 MPM_INTERVAL_SECONDS=45
 MPM_SWAP_THRESHOLD_MIB=128 # inline comment
@@ -27,7 +27,7 @@ CFG
 }
 
 @test "config::load rejects unsupported keys instead of executing shell" {
-  cat > "${HOME}/.config/memory-pressure-monitor/config.sh" <<'CFG'
+  cat > "${HOME}/.config/memory-pressure-monitor/config.sh" << 'CFG'
 MPM_INTERVAL_SECONDS=45
 BAD_KEY=touch /tmp/should-not-run
 CFG
@@ -38,7 +38,7 @@ CFG
 }
 
 @test "config::load rejects invalid numeric values" {
-  cat > "${HOME}/.config/memory-pressure-monitor/config.sh" <<'CFG'
+  cat > "${HOME}/.config/memory-pressure-monitor/config.sh" << 'CFG'
 MPM_SWAP_THRESHOLD_MIB=abc
 CFG
 
@@ -48,7 +48,7 @@ CFG
 }
 
 @test "config::load rejects relative log paths" {
-  cat > "${HOME}/.config/memory-pressure-monitor/config.sh" <<'CFG'
+  cat > "${HOME}/.config/memory-pressure-monitor/config.sh" << 'CFG'
 MPM_LOG_PATH=relative.log
 CFG
 
@@ -59,7 +59,7 @@ CFG
 
 @test "config::load rejects directory log paths" {
   mkdir -p "${TMP}/logs-as-dir"
-  cat > "${HOME}/.config/memory-pressure-monitor/config.sh" <<CFG
+  cat > "${HOME}/.config/memory-pressure-monitor/config.sh" << CFG
 MPM_LOG_PATH=${TMP}/logs-as-dir
 CFG
 
@@ -71,7 +71,7 @@ CFG
 @test "config::load rejects symlink state paths" {
   touch "${TMP}/real-state.json"
   ln -s "${TMP}/real-state.json" "${TMP}/linked-state.json"
-  cat > "${HOME}/.config/memory-pressure-monitor/config.sh" <<CFG
+  cat > "${HOME}/.config/memory-pressure-monitor/config.sh" << CFG
 MPM_STATE_PATH=${TMP}/linked-state.json
 CFG
 

@@ -26,7 +26,7 @@ teardown() {
 # the entrypoint reads.
 stub_path() {
   local pressure_fix="$1" swap_fix="$2"
-  cat > "${STUB}/sysctl" <<STUB
+  cat > "${STUB}/sysctl" << STUB
 #!/bin/bash
 case "\$1" in
   kern.memorystatus_vm_pressure_level) cat "${REPO_ROOT}/tests/fixtures/${pressure_fix}" ;;
@@ -34,7 +34,7 @@ case "\$1" in
   vm.swapusage) cat "${REPO_ROOT}/tests/fixtures/${swap_fix}" ;;
 esac
 STUB
-  cat > "${STUB}/vm_stat" <<STUB
+  cat > "${STUB}/vm_stat" << STUB
 #!/bin/bash
 cat "${REPO_ROOT}/tests/fixtures/vm_stat_macos26.txt"
 STUB
@@ -123,7 +123,7 @@ STUB
 
 @test "failing notification backend records cooldown and exits cleanly" {
   stub_path sysctl_pressure_level_critical.txt sysctl_swapusage_inactive.txt
-  cat > "${STUB}/osascript" <<'STUB'
+  cat > "${STUB}/osascript" << 'STUB'
 #!/bin/bash
 exit 7
 STUB
@@ -140,7 +140,7 @@ STUB
 @test "malformed primary pressure level fails the tick" {
   stub_path sysctl_pressure_level_normal.txt sysctl_swapusage_inactive.txt
   printf 'kern.memorystatus_vm_pressure_level: nope\n' > "${STUB}/bad_pressure"
-  cat > "${STUB}/sysctl" <<STUB
+  cat > "${STUB}/sysctl" << STUB
 #!/bin/bash
 case "\$1" in
   kern.memorystatus_vm_pressure_level) cat "${STUB}/bad_pressure" ;;

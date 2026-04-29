@@ -32,7 +32,7 @@ teardown() {
   # Stub osascript on PATH; capture its argv.
   STUB="${TMP}/bin"
   mkdir -p "${STUB}"
-  cat > "${STUB}/osascript" <<'STUB'
+  cat > "${STUB}/osascript" << 'STUB'
 #!/bin/bash
 printf '%s\n' "$@" > "${TMP}/osascript.argv"
 exit 0
@@ -50,7 +50,7 @@ STUB
 @test "osascript backend returns non-zero on failure" {
   STUB="${TMP}/bin"
   mkdir -p "${STUB}"
-  cat > "${STUB}/osascript" <<'STUB'
+  cat > "${STUB}/osascript" << 'STUB'
 #!/bin/bash
 exit 7
 STUB
@@ -63,7 +63,7 @@ STUB
 @test "terminal-notifier missing -> falls back to osascript with warn" {
   STUB="${TMP}/bin"
   mkdir -p "${STUB}"
-  cat > "${STUB}/osascript" <<'STUB'
+  cat > "${STUB}/osascript" << 'STUB'
 #!/bin/bash
 echo "osascript called" > "${TMP}/osa.flag"
 exit 0

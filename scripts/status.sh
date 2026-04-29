@@ -23,7 +23,7 @@ LAUNCHD_STDOUT_PATH="${HOME}/Library/Logs/memory-pressure-monitor.launchd.out.lo
 LAUNCHD_STDERR_PATH="${HOME}/Library/Logs/memory-pressure-monitor.launchd.err.log"
 
 usage() {
-  cat <<EOF
+  cat << EOF
 Usage: ${0##*/} [--json]
 
 Reports whether the ${LABEL} launchd agent is installed and loaded.
@@ -166,7 +166,7 @@ if [ -n "${last_sample}" ]; then
   last_sample_ts="$(json_string_field "${last_sample}" ts)"
   last_sample_epoch="$(iso_to_epoch "${last_sample_ts}")" || last_sample_epoch=""
   if [ -n "${last_sample_epoch}" ]; then
-    sample_age_seconds=$(( $(epoch_now) - last_sample_epoch ))
+    sample_age_seconds=$(($(epoch_now) - last_sample_epoch))
     if [ "${sample_age_seconds}" -le "${sample_stale_threshold}" ] && [ "${sample_age_seconds}" -ge 0 ]; then
       sample_fresh="true"
     fi
@@ -252,7 +252,7 @@ if [ "${mode}" = "json" ]; then
   exit 0
 fi
 
-cat <<EOF
+cat << EOF
 Memory Pressure Monitor
 
 Status:          ${health_label}

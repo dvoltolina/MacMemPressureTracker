@@ -18,7 +18,7 @@ teardown() {
 
 stub_launchctl() {
   local status="$1"
-  cat > "${STUB}/launchctl" <<STUB
+  cat > "${STUB}/launchctl" << STUB
 #!/bin/bash
 case "\$1" in
   print) exit ${status} ;;
@@ -48,7 +48,7 @@ STUB
 
 @test "status survives invalid config and reports the error" {
   stub_launchctl 1
-  cat > "${TMP}/bad-config.sh" <<'CFG'
+  cat > "${TMP}/bad-config.sh" << 'CFG'
 MPM_INTERVAL_SECONDS=nope
 CFG
   export MPM_CONFIG_PATH="${TMP}/bad-config.sh"
@@ -62,7 +62,7 @@ CFG
 
 @test "status honors valid custom log and state config paths" {
   stub_launchctl 1
-  cat > "${TMP}/config.sh" <<CFG
+  cat > "${TMP}/config.sh" << CFG
 MPM_LOG_PATH=${TMP}/custom.log
 MPM_STATE_PATH=${TMP}/custom-state.json
 CFG
@@ -77,7 +77,7 @@ CFG
 
 @test "loaded agent with stale sample is not reported as running" {
   stub_launchctl 0
-  cat > "${TMP}/config.sh" <<CFG
+  cat > "${TMP}/config.sh" << CFG
 MPM_LOG_PATH=${TMP}/monitor.log
 CFG
   export MPM_CONFIG_PATH="${TMP}/config.sh"
