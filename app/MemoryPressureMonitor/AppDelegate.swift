@@ -765,22 +765,32 @@ struct AppArguments {
   let zone: String?
   let freePct: Int?
   let swapMib: Int?
+  let allowQuit: Bool
+
+  // Flags that take no value. Listed here so the parser advances by 1
+  // rather than greedily consuming the next argv as the value.
+  private static let booleanFlags: Set<String> = ["--allow-quit"]
 
   static func parse(_ argv: [String]) -> AppArguments {
     var dict: [String: String] = [:]
     var i = 1
     while i < argv.count {
       let key = argv[i]
-      if key.hasPrefix("--") {
-        // Reject values that look like another flag — protects callers
-        // that drop a flag's value, which would otherwise silently
-        // misalign the parse and break alert mode.
-        if i + 1 < argv.count, !argv[i + 1].hasPrefix("--") {
-          dict[key] = argv[i + 1]
-          i += 2
-        } else {
-          i += 1
-        }
+      guard key.hasPrefix("--") else {
+        i += 1
+        continue
+      }
+      if booleanFlags.contains(key) {
+        dict[key] = "1"
+        i += 1
+        continue
+      }
+      // Reject values that look like another flag — protects callers
+      // that drop a flag's value, which would otherwise silently
+      // misalign the parse and break alert mode.
+      if i + 1 < argv.count, !argv[i + 1].hasPrefix("--") {
+        dict[key] = argv[i + 1]
+        i += 2
       } else {
         i += 1
       }
@@ -791,13 +801,15 @@ struct AppArguments {
       alertBody: dict["--body"] ?? "",
       zone: dict["--zone"],
       freePct: dict["--free-pct"].flatMap(Int.init),
-      swapMib: dict["--swap-mib"].flatMap(Int.init)
+      swapMib: dict["--swap-mib"].flatMap(Int.init),
+      allowQuit: dict["--allow-quit"] != nil
     )
   }
 }
 
 struct ProcessRow {
   let pid: Int
+  let uid: Int
   let rssMib: Int
   let command: String
 }
@@ -807,7 +819,7 @@ enum ProcessLister {
   static func topByRSS(limit: Int) -> [ProcessRow] {
     let task = Process()
     task.executableURL = URL(fileURLWithPath: "/bin/ps")
-    task.arguments = ["-A", "-o", "pid=,rss=,comm="]
+    task.arguments = ["-A", "-o", "pid=,uid=,rss=,comm="]
     let outPipe = Pipe()
     let errPipe = Pipe()
     task.standardOutput = outPipe
@@ -820,17 +832,64 @@ enum ProcessLister {
     var rows: [ProcessRow] = []
     for raw in text.split(separator: "\n", omittingEmptySubsequences: true) {
       let line = raw.trimmingCharacters(in: .whitespaces)
-      let parts = line.split(separator: " ", maxSplits: 2, omittingEmptySubsequences: true)
-      guard parts.count == 3,
+      let parts = line.split(separator: " ", maxSplits: 3, omittingEmptySubsequences: true)
+      guard parts.count == 4,
         let pid = Int(parts[0]),
-        let rssKb = Int(parts[1])
+        let uid = Int(parts[1]),
+        let rssKb = Int(parts[2])
       else { continue }
-      let cmd = parts[2].trimmingCharacters(in: .whitespaces)
+      let cmd = parts[3].trimmingCharacters(in: .whitespaces)
       let display = cmd.isEmpty ? "(unknown)" : cmd
-      rows.append(ProcessRow(pid: pid, rssMib: rssKb / 1024, command: display))
+      rows.append(ProcessRow(pid: pid, uid: uid, rssMib: rssKb / 1024, command: display))
     }
     rows.sort { $0.rssMib > $1.rssMib }
     return Array(rows.prefix(limit))
+  }
+}
+
+// Hardcoded never-kill list. Names matched case-insensitively against the
+// basename returned by `ps -o comm=`. Stays in source so a malicious
+// environment cannot override the protection.
+enum NeverKill {
+  static let names: Set<String> = [
+    "launchd",
+    "kernel_task",
+    "windowserver",
+    "finder",
+    "dock",
+    "systemuiserver",
+    "loginwindow",
+    "mds",
+    "mds_stores",
+    "mdworker",
+    "mdworker_shared",
+    "securityd",
+    "coreaudiod",
+    "hidd",
+    "syslogd",
+    "runningboardd",
+    "powerd",
+    "configd",
+    "memory pressure monitor"
+  ]
+
+  // Returns a refusal reason, or nil if the process can be quit.
+  static func refusalReason(for row: ProcessRow, selfPid: Int) -> String? {
+    if row.pid == selfPid { return "Refusing to quit Memory Pressure Monitor itself." }
+    if row.pid < 200 { return "Refusing system process (PID < 200)." }
+    if row.uid == 0 { return "Refusing root-owned process. Use Activity Monitor with admin rights." }
+
+    let basename = (row.command as NSString).lastPathComponent.lowercased()
+    if names.contains(basename) {
+      return "\(row.command) is on the never-kill list (system-critical)."
+    }
+    // Match against the raw command too — `ps -o comm=` returns the binary
+    // basename for most processes but the full bundle name for some (e.g.
+    // "Memory Pressure Monitor"), and lastPathComponent leaves those intact.
+    if names.contains(row.command.lowercased()) {
+      return "\(row.command) is on the never-kill list (system-critical)."
+    }
+    return nil
   }
 }
 
@@ -925,8 +984,16 @@ final class AlertController: NSObject, NSApplicationDelegate {
     }
   }
 
+  // Map from NSButton.tag (= row PID) to the row + the row's status label.
+  // Populated by buildProcessTable, read by quitTapped.
+  private var rowsByPid: [Int: ProcessRow] = [:]
+  private var statusLabelsByPid: [Int: NSTextField] = [:]
+  private var quitButtonsByPid: [Int: NSButton] = [:]
+
   private func buildProcessTable() -> NSView {
     let processes = ProcessLister.topByRSS(limit: 8)
+    rowsByPid = Dictionary(uniqueKeysWithValues: processes.map { ($0.pid, $0) })
+
     let stack = NSStackView()
     stack.orientation = .vertical
     stack.alignment = .leading
@@ -943,27 +1010,120 @@ final class AlertController: NSObject, NSApplicationDelegate {
       stack.addArrangedSubview(none)
     } else {
       let mono = NSFont.monospacedSystemFont(ofSize: 11, weight: .regular)
-      let columnHeader = NSTextField(labelWithString: "   PID    RSS  Process")
+      let columnHeader = NSTextField(labelWithString:
+        args.allowQuit ? "   PID    RSS  Process                                  " : "   PID    RSS  Process")
       columnHeader.font = mono
       columnHeader.textColor = .secondaryLabelColor
       stack.addArrangedSubview(columnHeader)
+
       for p in processes {
-        let row = NSTextField(labelWithString:
-          String(format: "%6d  %4d MiB  %@", p.pid, p.rssMib, p.command))
-        row.font = mono
-        stack.addArrangedSubview(row)
+        stack.addArrangedSubview(buildProcessRow(p, mono: mono))
       }
     }
 
-    let advisory = NSTextField(labelWithString:
-      "To free memory: open Activity Monitor and Quit the largest process you don't need.")
+    let advisory = NSTextField(labelWithString: advisoryCopy())
     advisory.font = .systemFont(ofSize: 11, weight: .medium)
     advisory.textColor = .labelColor
     stack.addArrangedSubview(advisory)
 
     let size = stack.fittingSize
-    stack.frame = NSRect(x: 0, y: 0, width: max(size.width, 460), height: size.height)
+    let minWidth: CGFloat = args.allowQuit ? 540 : 460
+    stack.frame = NSRect(x: 0, y: 0, width: max(size.width, minWidth), height: size.height)
     return stack
+  }
+
+  private func advisoryCopy() -> String {
+    if args.allowQuit {
+      return "Tap Quit to send SIGTERM. System-critical processes are protected."
+    }
+    return "To free memory: open Activity Monitor and Quit the largest process you don't need."
+  }
+
+  private func buildProcessRow(_ p: ProcessRow, mono: NSFont) -> NSView {
+    let row = NSStackView()
+    row.orientation = .horizontal
+    row.alignment = .firstBaseline
+    row.spacing = 6
+
+    let textPart = NSTextField(labelWithString:
+      String(format: "%6d  %4d MiB  %@", p.pid, p.rssMib, p.command))
+    textPart.font = mono
+    textPart.lineBreakMode = .byTruncatingTail
+    row.addArrangedSubview(textPart)
+
+    if args.allowQuit {
+      let status = NSTextField(labelWithString: "")
+      status.font = .systemFont(ofSize: 10)
+      status.textColor = .secondaryLabelColor
+      statusLabelsByPid[p.pid] = status
+      row.addArrangedSubview(status)
+
+      let button = NSButton(title: "Quit", target: self, action: #selector(quitTapped(_:)))
+      button.bezelStyle = .rounded
+      button.controlSize = .small
+      button.tag = p.pid
+      quitButtonsByPid[p.pid] = button
+      row.addArrangedSubview(button)
+    }
+
+    return row
+  }
+
+  @objc private func quitTapped(_ sender: NSButton) {
+    let pid = sender.tag
+    guard let row = rowsByPid[pid] else { return }
+
+    if let reason = NeverKill.refusalReason(for: row, selfPid: Int(getpid())) {
+      annotateRow(pid: pid, status: "refused", color: .systemRed)
+      sender.isEnabled = false
+      let info = NSAlert()
+      info.messageText = "Cannot quit \(row.command)"
+      info.informativeText = reason
+      info.addButton(withTitle: "OK")
+      info.window.level = .floating
+      info.runModal()
+      return
+    }
+
+    let confirm = NSAlert()
+    confirm.messageText = "Send SIGTERM to \(row.command)?"
+    confirm.informativeText =
+      "PID \(row.pid). The process will receive a polite quit signal. SIGKILL is not used; if it ignores SIGTERM you will need Activity Monitor."
+    confirm.addButton(withTitle: "Send SIGTERM")
+    confirm.addButton(withTitle: "Cancel")
+    confirm.window.level = .floating
+    let response = confirm.runModal()
+    guard response == .alertFirstButtonReturn else { return }
+
+    let result = kill(pid_t(row.pid), SIGTERM)
+    if result == 0 {
+      annotateRow(pid: pid, status: "SIGTERM sent", color: .secondaryLabelColor)
+      sender.isEnabled = false
+      return
+    }
+
+    let savedErrno = errno
+    let detail: String
+    switch savedErrno {
+    case ESRCH: detail = "Process is already gone."
+    case EPERM: detail = "Permission denied. Try Activity Monitor with admin rights."
+    default: detail = "Failed to send SIGTERM (errno \(savedErrno))."
+    }
+    annotateRow(pid: pid, status: "error", color: .systemRed)
+    sender.isEnabled = false
+
+    let err = NSAlert()
+    err.messageText = "Could not quit \(row.command)"
+    err.informativeText = detail
+    err.addButton(withTitle: "OK")
+    err.window.level = .floating
+    err.runModal()
+  }
+
+  private func annotateRow(pid: Int, status: String, color: NSColor) {
+    guard let label = statusLabelsByPid[pid] else { return }
+    label.stringValue = status
+    label.textColor = color
   }
 
   private func openActivityMonitor() {

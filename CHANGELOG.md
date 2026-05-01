@@ -14,6 +14,7 @@ Format conventions:
 ### Feature: kill-from-popup
 
 - `feat(notify):` plumb `MPM_POPUP_ALLOW_QUIT` (default `0`) through `config/defaults.sh`, the `lib/config.sh` validator, and `lib/notify.sh`. When set to `1`, the popup backend appends `--allow-quit` to the dashboard binary's argv. The binary will use this flag in a follow-up commit to render per-row Quit buttons. Default off; the existing advisory popup behavior is unchanged for users who do not opt in.
+- `feat(app):` per-row "Quit" buttons in the alert popup when launched with `--allow-quit`. Tapping Quit shows a `Send SIGTERM to <name>?` confirmation; on confirm, sends `SIGTERM` via `kill(2)` and disables the row's button with a status annotation. A hardcoded never-kill list (`launchd`, `WindowServer`, `Finder`, `Dock`, `SystemUIServer`, `loginwindow`, `mds`, `mds_stores`, `mdworker`, `mdworker_shared`, `securityd`, `coreaudiod`, `hidd`, `syslogd`, `runningboardd`, `powerd`, `configd`, `kernel_task`, `Memory Pressure Monitor`) plus PID < 200 and uid 0 refusals block system-critical processes regardless of the env. `kill()` errors are surfaced as user-visible alerts: `ESRCH` → "already gone", `EPERM` → "permission denied — try Activity Monitor". `AppArguments.parse` learned a boolean-flag mode for `--allow-quit` (does not consume the next argv as a value). `ProcessLister` now captures `uid` from `ps -o pid=,uid=,rss=,comm=` so the uid-0 check is enforceable. SIGKILL escalation is intentionally not supported.
 
 ---
 
