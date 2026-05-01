@@ -127,6 +127,7 @@ All keys, with their defaults:
 | `MPM_SWAP_GROWTH_MIB` | `1024` | Re-fire a swap alert once swap grows this many MiB above the last-alerted level. |
 | `MPM_NOTIFICATION_BACKEND` | `popup` | `popup` (centered window, default), `osascript` (banner), `terminal-notifier`, or `stderr` (test). |
 | `MPM_NOTIFICATION_SOUND` | _(empty)_ | Optional system sound name for the banner backends. |
+| `MPM_POPUP_ALLOW_QUIT` | `0` | When `1`, the popup adds per-row "Quit" buttons that send `SIGTERM` to the selected process after a confirmation prompt. A hardcoded never-kill list (`launchd`, `WindowServer`, `Finder`, `Dock`, `SystemUIServer`, `loginwindow`, `mds*`, `securityd`, `kernel_task`, ...) plus PID < 200 and root-owned refusals block system-critical processes. SIGKILL escalation is not supported. |
 | `MPM_LOG_PATH` | `~/Library/Logs/memory-pressure-monitor.log` | App log path. |
 
 The override file is parsed as strict `KEY=value` data, not executed as shell. Use absolute
@@ -142,6 +143,12 @@ that lists the top 8 processes by RSS, with an "Open Activity Monitor" button. T
 auto-dismisses after 90 seconds. The popup binary is the same `Memory Pressure Monitor.app`
 built by `make app`; if the app bundle is missing, the sampler falls back to `osascript`
 and logs `notify_fallback reason=app_missing`.
+
+Set `MPM_POPUP_ALLOW_QUIT=1` to add per-row "Quit" buttons that send `SIGTERM` to the
+selected process. The popup confirms before sending the signal, refuses system-critical
+processes from a hardcoded never-kill list (regardless of env), and surfaces `kill(2)`
+errors as alerts. SIGKILL escalation is intentionally not supported — if a process ignores
+SIGTERM, use Activity Monitor.
 
 To switch back to the classic macOS banner:
 
