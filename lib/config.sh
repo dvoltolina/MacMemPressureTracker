@@ -35,6 +35,7 @@ _config::allowed_key() {
       MPM_SWAP_GROWTH_MIB | \
       MPM_NOTIFICATION_BACKEND | \
       MPM_NOTIFICATION_SOUND | \
+      MPM_POPUP_ALLOW_QUIT | \
       MPM_LOG_PATH | \
       MPM_STATE_PATH | \
       MPM_LOG_TEE_STDERR)
@@ -198,6 +199,14 @@ config::validate() {
     0 | 1) ;;
     *)
       _config::fail "MPM_LOG_TEE_STDERR must be 0 or 1"
+      return 1
+      ;;
+  esac
+
+  case "${MPM_POPUP_ALLOW_QUIT:-0}" in
+    0 | 1) ;;
+    *)
+      _config::fail "MPM_POPUP_ALLOW_QUIT must be 0 or 1"
       return 1
       ;;
   esac

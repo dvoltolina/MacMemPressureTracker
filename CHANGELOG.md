@@ -9,6 +9,14 @@ Format conventions:
 
 ---
 
+## 2026-04-30
+
+### Feature: kill-from-popup
+
+- `feat(notify):` plumb `MPM_POPUP_ALLOW_QUIT` (default `0`) through `config/defaults.sh`, the `lib/config.sh` validator, and `lib/notify.sh`. When set to `1`, the popup backend appends `--allow-quit` to the dashboard binary's argv. The binary will use this flag in a follow-up commit to render per-row Quit buttons. Default off; the existing advisory popup behavior is unchanged for users who do not opt in.
+
+---
+
 ## 2026-04-29
 
 ### Feature: dashboard

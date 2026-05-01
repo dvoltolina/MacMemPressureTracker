@@ -34,6 +34,12 @@
 # missing.
 : "${MPM_NOTIFICATION_BACKEND:=popup}"
 
+# When 1, the popup shows per-row "Quit" buttons that send SIGTERM to the
+# selected process. A hardcoded never-kill list (launchd, WindowServer,
+# Finder, Dock, ...) blocks system-critical processes regardless of this
+# setting. SIGKILL escalation is intentionally not supported. Default off.
+: "${MPM_POPUP_ALLOW_QUIT:=0}"
+
 # Optional system sound name (empty = silent).
 : "${MPM_NOTIFICATION_SOUND:=}"
 

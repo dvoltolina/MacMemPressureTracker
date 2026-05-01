@@ -83,6 +83,13 @@ _notify::popup_already_visible() {
   pgrep -f 'Memory Pressure Monitor.*--alert' > /dev/null 2>&1
 }
 
+# Argv contract for the dashboard binary's --alert mode:
+#   --alert <kind> --title <text> --body <text>
+#   [--zone <z>] [--free-pct <n>] [--swap-mib <n>] [--allow-quit]
+#
+# --allow-quit is appended only when MPM_POPUP_ALLOW_QUIT=1. It enables
+# per-row Quit buttons in the popup that send SIGTERM to the selected
+# process (subject to the hardcoded never-kill list inside the binary).
 _notify::backend_popup() {
   local title="$1" body="$2" sound="${3:-}"
   shift 3 2> /dev/null || shift $#
@@ -110,13 +117,24 @@ _notify::backend_popup() {
     return 0
   fi
 
-  # Run the app detached so the launchd tick does not block on an
-  # interactive popup the user might leave open.
-  nohup "${binary}" \
-    --alert "${kind}" \
-    --title "${title}" \
-    --body "${body}" \
-    "$@" > /dev/null 2>&1 &
+  # Branch the nohup invocation rather than using a conditionally-empty
+  # array: bash 3.2 (the macOS system shell) errors on "${arr[@]}" under
+  # `set -u` when the array is empty, and the ${arr[@]+"${arr[@]}"}
+  # workaround is harder to read than two explicit calls.
+  if [ "${MPM_POPUP_ALLOW_QUIT:-0}" = "1" ]; then
+    nohup "${binary}" \
+      --alert "${kind}" \
+      --title "${title}" \
+      --body "${body}" \
+      "$@" \
+      --allow-quit > /dev/null 2>&1 &
+  else
+    nohup "${binary}" \
+      --alert "${kind}" \
+      --title "${title}" \
+      --body "${body}" \
+      "$@" > /dev/null 2>&1 &
+  fi
   disown 2> /dev/null || true
   return 0
 }
