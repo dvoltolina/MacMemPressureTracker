@@ -10,23 +10,28 @@
 : "${MPM_INTERVAL_SECONDS:=30}"
 
 # Cooldown before another red-zone notification fires (seconds).
-: "${MPM_RED_COOLDOWN_SECONDS:=600}"
+# Red is critical; keep nagging at 5-minute intervals while it persists so
+# the user can't miss it.
+: "${MPM_RED_COOLDOWN_SECONDS:=300}"
 
 # Whether warn-zone notifications fire (1 = on, 0 = off).
 : "${MPM_WARN_ALERTS_ENABLED:=1}"
 
 # Cooldown before another warn-zone notification fires (seconds).
-: "${MPM_WARN_COOLDOWN_SECONDS:=1800}"
+# Warn is "memory is getting tight"; re-fire every 10 minutes while held
+# so the user notices the trend without being spammed.
+: "${MPM_WARN_COOLDOWN_SECONDS:=600}"
 
 # Cooldown before another swap-in-use notification fires (seconds).
-: "${MPM_SWAP_COOLDOWN_SECONDS:=900}"
+: "${MPM_SWAP_COOLDOWN_SECONDS:=600}"
 
 # Swap usage threshold to consider "in use" (MiB).
 : "${MPM_SWAP_THRESHOLD_MIB:=64}"
 
 # Re-fire a swap notification when current swap exceeds the last-alerted
-# level by this many MiB. Default 1 GiB.
-: "${MPM_SWAP_GROWTH_MIB:=1024}"
+# level by this many MiB. 256 MiB catches meaningful growth without
+# being noisy on small fluctuations.
+: "${MPM_SWAP_GROWTH_MIB:=256}"
 
 # Notification backend: "popup" (default — centered window via the
 # dashboard app), "osascript" (banner), "terminal-notifier", or "stderr"

@@ -947,7 +947,22 @@ final class AlertController: NSObject, NSApplicationDelegate {
 
     configureMenu()
     NSApp.activate(ignoringOtherApps: true)
+    playAlertSound()
     presentAlert()
+  }
+
+  // Play an audible cue so the user notices the popup. Red gets the loud
+  // attention sound; warn gets a softer chime; swap-only gets nothing
+  // (it's information, not urgent).
+  private func playAlertSound() {
+    let name: String?
+    switch args.alertKind {
+    case "red_pressure": name = "Sosumi"
+    case "warn_pressure": name = "Pop"
+    default: name = nil
+    }
+    guard let n = name, let sound = NSSound(named: NSSound.Name(n)) else { return }
+    sound.play()
   }
 
   func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {

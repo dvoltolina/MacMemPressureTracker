@@ -21,6 +21,11 @@ Format conventions:
 - `fix(notify):` tighten the `_notify::popup_already_visible` pgrep pattern from `Memory Pressure Monitor.*--alert` to the full repo-bound bundle path plus `--alert`. The looser pattern could be matched by a user-owned process whose cmdline coincidentally contained both substrings, which would have suppressed every legitimate alert until that process exited — a denial-of-alert that directly defeats the project's purpose. The new pattern requires the absolute path to the popup binary and is essentially impossible to spoof.
 - `feat(app):` add Activity Monitor to the never-kill list. The popup advises the user to use Activity Monitor as the SIGKILL escape hatch for stubborn processes; refusing to kill Activity Monitor itself from inside the popup keeps that escape hatch intact.
 
+### Tuning
+
+- `feat(decision):` more responsive default cooldowns and growth threshold. Previous defaults were too forgiving — once an alert fired, the system stayed quiet for 30 minutes (warn) or 10 minutes (red) even if pressure kept rising or swap kept growing. New defaults: `MPM_RED_COOLDOWN_SECONDS=300` (5 min, was 600), `MPM_WARN_COOLDOWN_SECONDS=600` (10 min, was 1800), `MPM_SWAP_COOLDOWN_SECONDS=600` (was 900), `MPM_SWAP_GROWTH_MIB=256` (was 1024). Rationale: while pressure stays elevated the user wants to be reminded; while swap is growing meaningfully the user wants to know.
+- `feat(app):` audible cue on the alert popup. The popup is now silent only for swap-only alerts (informational); `red_pressure` plays the system "Sosumi" sound so a critical-pressure alert is hard to miss, and `warn_pressure` plays the softer "Pop" sound. Sound plays once per popup at activation time. No new config key — picks a system sound by alert kind.
+
 ---
 
 ## 2026-04-30

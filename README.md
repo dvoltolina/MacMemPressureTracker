@@ -119,12 +119,12 @@ All keys, with their defaults:
 | Key | Default | Effect |
 | --- | --- | --- |
 | `MPM_INTERVAL_SECONDS` | `30` | How often launchd invokes the sampler. Rendered into the plist; needs `install.sh --force` to take effect. |
-| `MPM_RED_COOLDOWN_SECONDS` | `600` | Cooldown before another red-zone alert. |
+| `MPM_RED_COOLDOWN_SECONDS` | `300` | Cooldown before another red-zone alert. Critical pressure re-fires every 5 minutes while held. |
 | `MPM_WARN_ALERTS_ENABLED` | `1` | Set to `0` to silence warn-zone alerts entirely. |
-| `MPM_WARN_COOLDOWN_SECONDS` | `1800` | Cooldown before another warn-zone alert. |
-| `MPM_SWAP_COOLDOWN_SECONDS` | `900` | Cooldown before another swap alert. |
+| `MPM_WARN_COOLDOWN_SECONDS` | `600` | Cooldown before another warn-zone alert. Re-fires every 10 minutes while held. |
+| `MPM_SWAP_COOLDOWN_SECONDS` | `600` | Cooldown before another swap alert. |
 | `MPM_SWAP_THRESHOLD_MIB` | `64` | Swap level at or above which swap is considered "in use". |
-| `MPM_SWAP_GROWTH_MIB` | `1024` | Re-fire a swap alert once swap grows this many MiB above the last-alerted level. |
+| `MPM_SWAP_GROWTH_MIB` | `256` | Re-fire a swap alert once swap grows this many MiB above the last-alerted level. |
 | `MPM_NOTIFICATION_BACKEND` | `popup` | `popup` (centered window, default), `osascript` (banner), `terminal-notifier`, or `stderr` (test). |
 | `MPM_NOTIFICATION_SOUND` | _(empty)_ | Optional system sound name for the banner backends. |
 | `MPM_POPUP_ALLOW_QUIT` | `0` | When `1`, the popup adds per-row "Quit" buttons that send `SIGTERM` to the selected process after a confirmation prompt. A hardcoded never-kill list (`launchd`, `WindowServer`, `Finder`, `Dock`, `SystemUIServer`, `loginwindow`, `mds*`, `securityd`, `kernel_task`, ...) plus PID < 200 and root-owned refusals block system-critical processes. SIGKILL escalation is not supported. |
