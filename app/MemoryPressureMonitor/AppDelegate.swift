@@ -854,6 +854,24 @@ enum ProcessLister {
     rows.sort { $0.rssMib > $1.rssMib }
     return Array(rows.prefix(limit))
   }
+
+  // Returns the current `comm` for a single PID, or nil if the process is
+  // gone or `ps` failed. Used by AlertController to re-validate the PID
+  // immediately before kill(), so a recycled PID is not silently signaled.
+  static func commForPid(_ pid: Int) -> String? {
+    let task = Process()
+    task.executableURL = URL(fileURLWithPath: "/bin/ps")
+    task.arguments = ["-o", "comm=", "-p", String(pid)]
+    let outPipe = Pipe()
+    task.standardOutput = outPipe
+    do { try task.run() } catch { return nil }
+    task.waitUntilExit()
+    if task.terminationStatus != 0 { return nil }
+    let data = outPipe.fileHandleForReading.readDataToEndOfFile()
+    guard let text = String(data: data, encoding: .utf8) else { return nil }
+    let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+    return trimmed.isEmpty ? nil : trimmed
+  }
 }
 
 // Hardcoded never-kill list. Stays in source so a malicious environment
@@ -1117,6 +1135,35 @@ final class AlertController: NSObject, NSApplicationDelegate {
     confirm.window.level = .floating
     let response = confirm.runModal()
     guard response == .alertFirstButtonReturn else { return }
+
+    // Re-validate the PID still maps to the same command before signaling.
+    // The popup can sit on screen for up to 90 s, plenty of time for the
+    // PID to exit and macOS to recycle it for a different process the
+    // user did not intend to kill.
+    let currentComm = ProcessLister.commForPid(row.pid)
+    if currentComm == nil {
+      annotateRow(pid: pid, status: "already gone", color: .secondaryLabelColor)
+      sender.isEnabled = false
+      let info = NSAlert()
+      info.messageText = "\(row.command) is already gone"
+      info.informativeText = "PID \(row.pid) is no longer running."
+      info.addButton(withTitle: "OK")
+      info.window.level = .floating
+      info.runModal()
+      return
+    }
+    if currentComm != row.command {
+      annotateRow(pid: pid, status: "PID reused", color: .systemRed)
+      sender.isEnabled = false
+      let info = NSAlert()
+      info.messageText = "PID \(row.pid) is no longer \(row.command)"
+      info.informativeText =
+        "It now refers to: \(currentComm ?? "(unknown)"). Refusing to send SIGTERM to a recycled PID."
+      info.addButton(withTitle: "OK")
+      info.window.level = .floating
+      info.runModal()
+      return
+    }
 
     let result = kill(pid_t(row.pid), SIGTERM)
     if result == 0 {
