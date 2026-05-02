@@ -816,14 +816,23 @@ struct ProcessRow {
 
 enum ProcessLister {
   // Returns the top `limit` processes by RSS, descending.
+  //
+  // ps argv: -A -o pid=,uid=,rss=,comm=
+  // - uid= must stay numeric so the uid==0 refusal in NeverKill is enforceable.
+  // - comm= on macOS returns the FULL executable path for most processes
+  //   (e.g. /sbin/launchd, /System/Library/.../WindowServer), and a bare
+  //   basename for a few (interactive-shell binaries like `claude`, kernel
+  //   processes that don't live on disk). Both shapes have to be handled
+  //   downstream by NeverKill.refusalReason.
   static func topByRSS(limit: Int) -> [ProcessRow] {
     let task = Process()
     task.executableURL = URL(fileURLWithPath: "/bin/ps")
     task.arguments = ["-A", "-o", "pid=,uid=,rss=,comm="]
     let outPipe = Pipe()
-    let errPipe = Pipe()
     task.standardOutput = outPipe
-    task.standardError = errPipe
+    // Inherit stderr (which is /dev/null when invoked via the launchd nohup
+    // path). Setting a Pipe and never draining it can deadlock waitUntilExit
+    // if ps ever writes more than the pipe buffer (~64 KB) to stderr.
     do { try task.run() } catch { return [] }
     task.waitUntilExit()
     let data = outPipe.fileHandleForReading.readDataToEndOfFile()
@@ -847,9 +856,12 @@ enum ProcessLister {
   }
 }
 
-// Hardcoded never-kill list. Names matched case-insensitively against the
-// basename returned by `ps -o comm=`. Stays in source so a malicious
-// environment cannot override the protection.
+// Hardcoded never-kill list. Stays in source so a malicious environment
+// cannot override the protection. Names matched case-insensitively against
+// (a) the basename of the path returned by `ps -o comm=` (full path for
+// most macOS processes), AND (b) the raw `ps -o comm=` string itself
+// (catches commands without a path, e.g. interactive-shell binaries and
+// some kernel processes).
 enum NeverKill {
   static let names: Set<String> = [
     "launchd",
@@ -883,9 +895,10 @@ enum NeverKill {
     if names.contains(basename) {
       return "\(row.command) is on the never-kill list (system-critical)."
     }
-    // Match against the raw command too — `ps -o comm=` returns the binary
-    // basename for most processes but the full bundle name for some (e.g.
-    // "Memory Pressure Monitor"), and lastPathComponent leaves those intact.
+    // Fallback for commands without a path (e.g. interactive-shell binaries
+    // like `claude`, some kernel-side processes). lastPathComponent of a
+    // bare name returns the name itself, so this is also redundant for
+    // those — kept as defense-in-depth in case `ps` output ever shifts.
     if names.contains(row.command.lowercased()) {
       return "\(row.command) is on the never-kill list (system-critical)."
     }
@@ -946,9 +959,13 @@ final class AlertController: NSObject, NSApplicationDelegate {
     alert.window.level = .floating
     alert.window.collectionBehavior = [.canJoinAllSpaces, .moveToActiveSpace]
 
+    // Use NSApp.terminate(nil) rather than abortModal so the timer closes
+    // the popup even if the user is sitting on a nested confirmation modal
+    // (Quit confirmation, refusal alert, kill-error alert). abortModal
+    // only aborts the innermost session, which would leave the outer
+    // popup orphaned with no remaining auto-dismiss.
     let timer = Timer(timeInterval: autoDismissSeconds, repeats: false) { _ in
-      // abortModal stops runModal and returns NSApplication.ModalResponse.abort
-      NSApp.abortModal()
+      NSApp.terminate(nil)
     }
     RunLoop.main.add(timer, forMode: .common)
     dismissTimer = timer
@@ -992,7 +1009,13 @@ final class AlertController: NSObject, NSApplicationDelegate {
 
   private func buildProcessTable() -> NSView {
     let processes = ProcessLister.topByRSS(limit: 8)
-    rowsByPid = Dictionary(uniqueKeysWithValues: processes.map { ($0.pid, $0) })
+    // Build the lookup with a manual loop rather than
+    // Dictionary(uniqueKeysWithValues:) — that initializer fatalError's on
+    // duplicate keys, and the popup must not crash mid-alert if `ps` ever
+    // emits a duplicate PID (a kernel quirk during the snapshot, or a
+    // future tooling change). Last-write-wins is fine here.
+    rowsByPid = [:]
+    for p in processes { rowsByPid[p.pid] = p }
 
     let stack = NSStackView()
     stack.orientation = .vertical

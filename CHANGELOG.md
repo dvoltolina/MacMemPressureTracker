@@ -9,6 +9,17 @@ Format conventions:
 
 ---
 
+## 2026-05-02
+
+### Audit fixes for kill-from-popup
+
+- `fix(app):` correct the `ps -o comm=` semantics in `ProcessLister` and `NeverKill`. The audit identified that on macOS `comm=` returns the FULL executable path for most processes (e.g. `/sbin/launchd`) and only a bare basename for a few (interactive-shell binaries like `claude`, kernel-side processes). The functional behavior was correct because `lastPathComponent` extraction handles both shapes; this commit aligns the comments with reality and notes that the secondary `names.contains(row.command.lowercased())` check is defense-in-depth, not redundant.
+- `fix(app):` harden `buildProcessTable` against duplicate PIDs in the `ps` output. `Dictionary(uniqueKeysWithValues:)` calls `fatalError` on duplicate keys, which would crash the popup mid-alert (silently, since `nohup ... > /dev/null 2>&1 &` discards the panic). Replaced with an explicit last-write-wins loop.
+- `fix(app):` change the alert popup auto-dismiss from `NSApp.abortModal()` to `NSApp.terminate(nil)`. `abortModal` only aborts the innermost modal session, so if the timer fired while the user was sitting on a nested Quit confirmation, refusal alert, or kill-error alert, the inner alert aborted and the outer popup was orphaned with no remaining auto-dismiss. `terminate` closes the entire popup process regardless of nesting depth.
+- `fix(app):` stop assigning a `Pipe` to `task.standardError` in `ProcessLister`. Setting an unread pipe risks a `waitUntilExit` deadlock if `ps` ever writes more than the pipe buffer (~64 KB) to stderr. stderr now inherits, which is `/dev/null` on the launchd `nohup` path.
+
+---
+
 ## 2026-04-30
 
 ### Feature: kill-from-popup
