@@ -900,7 +900,11 @@ enum NeverKill {
     "runningboardd",
     "powerd",
     "configd",
-    "memory pressure monitor"
+    "memory pressure monitor",
+    // Activity Monitor is the user's escape hatch when SIGTERM doesn't
+    // terminate a process. Refuse to kill it from inside the popup so
+    // we don't strand the user.
+    "activity monitor"
   ]
 
   // Returns a refusal reason, or nil if the process can be quit.

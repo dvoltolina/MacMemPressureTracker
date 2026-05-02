@@ -19,6 +19,7 @@ Format conventions:
 - `fix(app):` stop assigning a `Pipe` to `task.standardError` in `ProcessLister`. Setting an unread pipe risks a `waitUntilExit` deadlock if `ps` ever writes more than the pipe buffer (~64 KB) to stderr. stderr now inherits, which is `/dev/null` on the launchd `nohup` path.
 - `fix(app):` re-validate the PID/comm mapping after the user confirms Quit, before sending `SIGTERM`. The popup can sit on screen for up to 90 s; if the original PID exits and macOS recycles it, sending `SIGTERM` to the recycled PID could hit a process the user never saw. Now `ProcessLister.commForPid(_:)` runs `/bin/ps -o comm= -p <pid>` after the confirmation; if the PID is gone or the command no longer matches the displayed row, the kill is aborted with an explanatory alert.
 - `fix(notify):` tighten the `_notify::popup_already_visible` pgrep pattern from `Memory Pressure Monitor.*--alert` to the full repo-bound bundle path plus `--alert`. The looser pattern could be matched by a user-owned process whose cmdline coincidentally contained both substrings, which would have suppressed every legitimate alert until that process exited — a denial-of-alert that directly defeats the project's purpose. The new pattern requires the absolute path to the popup binary and is essentially impossible to spoof.
+- `feat(app):` add Activity Monitor to the never-kill list. The popup advises the user to use Activity Monitor as the SIGKILL escape hatch for stubborn processes; refusing to kill Activity Monitor itself from inside the popup keeps that escape hatch intact.
 
 ---
 
