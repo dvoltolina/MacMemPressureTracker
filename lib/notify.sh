@@ -80,7 +80,14 @@ _notify::popup_app_binary() {
 }
 
 _notify::popup_already_visible() {
-  pgrep -f 'Memory Pressure Monitor.*--alert' > /dev/null 2>&1
+  # Match against the full path of the popup binary plus the --alert flag.
+  # Tightened from the original `Memory Pressure Monitor.*--alert` pattern,
+  # which could be matched by an unrelated user process whose cmdline
+  # coincidentally contained both substrings — a denial-of-alert risk
+  # since the visible-popup check would suppress legitimate alerts.
+  local binary
+  binary="$(_notify::popup_app_binary)"
+  pgrep -f "${binary}.*--alert" > /dev/null 2>&1
 }
 
 # Argv contract for the dashboard binary's --alert mode:
