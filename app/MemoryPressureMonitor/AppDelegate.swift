@@ -97,6 +97,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       let samples = PressureLogReader.recentSamples(logPath: path, maxCount: 240)
       DispatchQueue.main.async {
         self?.chartView.setSamples(samples)
+        // Keep the heartbeat label honest. Without this the label only
+        // updated when the user clicked Refresh, so a long-open dashboard
+        // would show "28m ago" in red while launchd was actually sampling
+        // every 30 s in the background.
+        if let latest = samples.last?.timestamp {
+          self?.lastSampleAt = latest
+          self?.updateHeartbeat()
+        }
       }
     }
   }
